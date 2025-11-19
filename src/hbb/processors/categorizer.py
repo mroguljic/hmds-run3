@@ -168,10 +168,10 @@ class categorizer(SkimmerABC):
         """Adds weights and variations, saves totals for all norm preserving weights and variations"""
         weights.add("genweight", events.genWeight)
 
+        btag_SF = 1.
         if not self._skip_syst:
             add_pileup_weight(weights, self._year, events.Pileup.nPU)
             add_ps_weight(weights, events.PSWeight)
-            btag_SF = 1.
             if not self._btag_eff:
                 btag_SF = add_btag_weights(weights, btag_jets, self._btagger, self._btag_wp, self._year, dataset)
 
