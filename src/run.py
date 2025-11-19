@@ -24,7 +24,7 @@ def run(year: str, fileset: dict, args: argparse.Namespace):
 
     local_dir = Path().resolve()
 
-    if args.save_skim:
+    if args.save_skim or args.save_skim_nosyst:
         # intermediate files are stored in the "./outparquet" local directory
         local_parquet_dir = local_dir / "outparquet"
         if local_parquet_dir.is_dir():
