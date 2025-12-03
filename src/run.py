@@ -12,7 +12,7 @@ from pathlib import Path
 import dask
 import uproot
 import yaml
-from coffea import nanoevents, util
+from coffea import nanoevents
 from coffea.dataset_tools import apply_to_fileset, max_chunks, preprocess
 
 from hbb.run_utils import get_dataset_spec, get_fileset
@@ -91,7 +91,7 @@ def run(year: str, fileset: dict, args: argparse.Namespace):
         save_skim=args.save_skim,
         skim_outpath="outparquet",
         btag_eff=args.btag_eff,
-        save_skim_nosysts=args.save_skim_nosysts
+        save_skim_nosysts=args.save_skim_nosysts,
     )
 
     full_tg, rep = apply_to_fileset(
@@ -117,19 +117,18 @@ def run(year: str, fileset: dict, args: argparse.Namespace):
     # This is the CORRECTED version of the file-combining block for run.py
 
     if args.save_skim or args.save_skim_nosysts:
+
         import pandas as pd
         import pyarrow as pa
         import pyarrow.parquet as pq
-        import os
 
         jer_vars = []
-        for entry in os.listdir(local_parquet_dir):
-            full_path = os.path.join(local_parquet_dir, entry)
-            if os.path.isdir(full_path):
-                jer_vars.append(entry)
-        
-        #compile parquet files from each jer_var/region/ directory
-        #save as {jer_var}_{region_name}.parquet for easy transfer
+        for entry in Path(local_parquet_dir).iterdir():
+            if entry.is_dir():
+                jer_vars.append(entry.name)
+
+        # compile parquet files from each jer_var/region/ directory
+        # save as {jer_var}_{region_name}.parquet for easy transfer
         for local_var in jer_vars:
             # only find subfolders with parquet files
             parquet_folders = set()
@@ -215,12 +214,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nano-version",
         type=str,
-        default="v12",
-        choices=[
-            "v12",
-            "v12v2_private",
-            "v14_private"
-        ],
+        default="v14_private",
+        choices=["v12", "v12v2_private", "v14_private", "v15"],
         help="NanoAOD version",
     )
     parser.add_argument(
