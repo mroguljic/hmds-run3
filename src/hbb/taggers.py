@@ -46,5 +46,20 @@ b_taggers = {
                 }
             }
 
-        }
+        },
+    #Will need to be changed: https://btv-wiki.docs.cern.ch/ScaleFactors/Run3Summer24/
+    #From the 2024 campaign onwards, only the UParTAK4 tagger is supported, and only json files are provided.
+    #UParT taggers do not exist in PFNano_v2 so we use btagPNetB for now, with values copied from 2023BPix
+    "2024": {
+        "AK4": {
+            "btagPNetB" : {
+                "L" : 0.0359,
+                "M" : 0.1919,
+                "T" : 0.6133,
+                "XT" : 0.7544,
+                "XXT" : 0.9688
+                }
+            }
+
+        },
 }
