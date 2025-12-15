@@ -8,6 +8,7 @@ LUMI = {
     "2023": 18084.4,
     "2023BPix": 9692.1,
     "2022-2023": 62428.6,
+    "2024": 114440.#Taken from https://twiki.cern.ch/twiki/bin/view/CMS/LumiRecommendationsRun3#2024
 }
 
 norm_preserving_weights = ["genweight", "pileup", "ISRPartonShower", "FSRPartonShower"]
