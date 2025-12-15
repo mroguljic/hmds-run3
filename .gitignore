@@ -24,3 +24,4 @@ fitting/templates/
 plots/
 *.txt
 *.ipynb_checkpoints/
+.github/*
