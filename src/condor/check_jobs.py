@@ -76,10 +76,21 @@ def main(args):
             # and go to the next sample
             continue
 
-        outs_parquet = [
-            int(str(out).split(".")[0].split("_")[-1])
-            for out in Path(f"{eosdir}/{sample}/parquet").glob("*.parquet")
-        ]
+        # Important note: to be checked and corrected once we run with systematics!
+        # For now matching: .../parquet/nominal/signal-all/partN.parquet
+        outs_parquet = []
+        parquet_base = Path(f"{eosdir}/{sample}/parquet")
+        if parquet_base.exists():
+            # Look for partN.parquet files in any subdirectory
+            for parquet_file in parquet_base.rglob("part*.parquet"):
+                try:
+                    # Extract job number from partN.parquet
+                    job_num = int(parquet_file.stem.replace("part", ""))
+                    outs_parquet.append(job_num)
+                except ValueError:
+                    continue
+        
+        outs_parquet = list(set(outs_parquet))  # Remove duplicates
         # print(f"Out parquets: {outs_parquet}")
 
         if not Path(f"{eosdir}/{sample}/pickles").exists():
