@@ -76,8 +76,8 @@ def main(args):
     year = args.year
     region = args.region
 
-    MAIN_DIR = "/eos/uscms/store/group/lpchbbrun3/"
-    dir_name = "gmachado/25Aug27_v12"
+    MAIN_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
+    dir_name = "16Dec25_v15/"
     path_to_dir = f"{MAIN_DIR}/{dir_name}/"
 
     load_columns_mc = [
@@ -119,7 +119,7 @@ def main(args):
         # Loop through each dataset within the process
         for dataset in datasets:
             # Load only one dataset at a time to save memory
-            search_path = Path(data_dir / dataset / "parquet" / region)
+            search_path = Path(data_dir / dataset / "parquet" / "nominal" / region)
             print(f"\n[DEBUG] Script is searching for files in: {search_path}\n")
 
             events = utils.load_samples(
@@ -164,7 +164,7 @@ if __name__ == "__main__":
         help="year",
         type=str,
         required=True,
-        choices=["2022", "2022EE", "2023", "2023BPix"],
+        choices=["2022", "2022EE", "2023", "2023BPix", "2024"],
     )
     parser.add_argument(
         "--region",

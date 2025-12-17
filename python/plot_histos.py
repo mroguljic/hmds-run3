@@ -337,7 +337,7 @@ if __name__ == "__main__":
         type=str,
         required=True,
         nargs="+",
-        choices=["2022", "2022EE", "2023", "2023BPix"],
+        choices=["2022", "2022EE", "2023", "2023BPix", "2024"],
     )
     parser.add_argument("--indir", help="Input directory for .pkl files", type=str, required=True)
     parser.add_argument("--outdir", help="Output directory for plots", type=str, required=True)

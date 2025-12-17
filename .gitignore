@@ -25,3 +25,4 @@ plots/
 *.txt
 *.ipynb_checkpoints/
 .github/*
+condor/
