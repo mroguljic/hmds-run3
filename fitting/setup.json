@@ -8,34 +8,9 @@
         "branch_name" : "FatJet0_msdmatched"
     },
     "categories" : {
-        "ggf" : {
-            "name" : "signal-ggf",
-            "bins" : [450, 1200],
-            "bin_name" : "pt1",
-            "bin_pname" : "pt",
-            "branch_name" : "FatJet0_pt",
-            "bin_title" : "p_{T}"
-        },
-        "vh" : {
-            "name" : "signal-vh",
-            "bins" : [450, 1200],
-            "bin_name" : "pt1",
-            "bin_pname" : "pt",
-            "branch_name" : "FatJet0_pt",
-            "bin_title" : "p_{T}"
-        },
-        "vbf" : {
-            "name" : "signal-vbf",
-            "bins" : [1000, 13000],
-            "bin_name" : "mjj",
-            "bin_pname" : "mjj",
-            "branch_name" : "VBFPair_mjj",
-            "bins_pt" : [450, 1200],
-            "bin_title" : "m_{jj}"
-        },
-        "mucr" : {
-            "name" : "control-tt",
-            "bins" : [450, 1200],
+        "all" : {
+            "name" : "signal-all",
+            "bins" : [450, 550, 700, 1200],
             "bin_name" : "pt1",
             "bin_pname" : "pt",
             "branch_name" : "FatJet0_pt",

@@ -39,8 +39,6 @@ def fill_hists(outdict, events, region, reg_cfg, obs_cfg, qq_true, s, j_var=None
         pre_selection = (obs_br > obs_cfg["min"]) & (obs_br < obs_cfg["max"])
 
         selection_dict = {
-            "pass_bb": pre_selection & (Txbbxcc  > 0.82) & (Txbb  > Txcc),
-            "pass_cc": pre_selection & (Txbbxcc  > 0.82) & (Txcc  > Txbb),
             "fail": pre_selection & (Txbbxcc <= 0.82),
             "pass": pre_selection & (Txbbxcc  > 0.82)
         }
@@ -90,7 +88,7 @@ def main(args):
     year = args.year
     tag = args.tag
 
-    path_to_dir = f"/eos/uscms/store/group/lpchbbrun3/skims/{tag}"
+    path_to_dir = f"/eos/uscms/store/user/roguljic/lpchmdsrun3/{tag}"
     
     samples_qq = ['Wjets','Zjets','EWKW','EWKZ','EWKV']
     
@@ -107,36 +105,36 @@ def main(args):
 
     energy_variations = [
         None,
-        "JES",
-        "JER",
-        "UES",
-        'MuonPTScale',
-        'MuonPTRes'
+        # "JES",
+        # "JER",
+        # "UES",
+        # 'MuonPTScale',
+        # 'MuonPTRes'
     ]
 
     systs = [
-        'ISRPartonShower',
-        'FSRPartonShower', 
-        'aS_weight',
-        'PDF_weight',  
-        'PDFaS_weight', 
-        'scalevar_7pt', 
-        'scalevar_3pt',
-        'pileup',
-        'btagSFb_correlated',
-        'btagSFc_correlated',
-        'btagSFlight_correlated'
+        # 'ISRPartonShower',
+        # 'FSRPartonShower', 
+        # 'aS_weight',
+        # 'PDF_weight',  
+        # 'PDFaS_weight', 
+        # 'scalevar_7pt', 
+        # 'scalevar_3pt',
+        # 'pileup',
+        # 'btagSFb_correlated',
+        # 'btagSFc_correlated',
+        # 'btagSFlight_correlated'
     ]
 
     year_systs = [
-        'btagSFb',
-        'btagSFc',
-        'btagSFlight',
+        # 'btagSFb',
+        # 'btgSFc',
+        # 'btagSFlight',
     ]
 
     cr_systs = {
-        "mucr" : ["muon_ID", "muon_ISO"],
-        "zgcr" : ["photon_ID"]
+        # "mucr" : ["muon_ID", "muon_ISO"],
+        # "zgcr" : ["photon_ID"]
     }
 
     data_dirs = {year: Path(path_to_dir) / year}
@@ -238,7 +236,7 @@ if __name__ == "__main__":
         help="year",
         type=str,
         required=True,
-        choices=["2022", "2022EE", "2023", "2023BPix", "Run3"],
+        choices=["2022", "2022EE", "2023", "2023BPix", "2024", "Run3"],
     )
     parser.add_argument(
         "--tag",
