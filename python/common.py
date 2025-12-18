@@ -10,16 +10,6 @@ year_map = {
 }
 
 common_mc = {
-    "ggf-hbb": {"GluGluHto2B_PT-200_M-125"},
-    "vh-hbb": {
-        "WplusH_Hto2B_Wto2Q_M-125",
-        "WminusH_Hto2B_Wto2Q_M-125",
-        "ggZH_Hto2B_Zto2Q_M-125",
-        "ZH_Hto2B_Zto2Q_M-125",
-    },
-    "vbf-hbb": {
-        "VBFHto2B_M-125_dipoleRecoilOn",
-    },
     "qcd": {
         "QCD_HT-200to400",
         "QCD_HT-400to600",
@@ -31,40 +21,25 @@ common_mc = {
         "QCD_HT-2000",
     },
     "tt": {"TTto2L2Nu", "TTto4Q", "TTtoLNu2Q"},
-    "singletop": {
-        "TBbarQ_t-channel_4FS",
-        "TbarBQ_t-channel_4FS",
-        "TWminusto2L2Nu",
-        "TWminusto4Q",
-        "TWminustoLNu2Q",
-        "TbarWplusto2L2Nu",
-        "TbarWplusto4Q",
-        "TbarWplustoLNu2Q",
-    },
     "diboson": {
         "WW",
         "WZ",
         "ZZ",
     },
     "wjets": {
-        "Wto2Q-3Jets_HT-200to400",
-        "Wto2Q-3Jets_HT-400to600",
-        "Wto2Q-3Jets_HT-600to800",
-        "Wto2Q-3Jets_HT-800",
+        "Wto2Q-3Jets_Bin-HT-100to400",
+        "Wto2Q-3Jets_Bin-HT-400to800",
+        "Wto2Q-3Jets_Bin-HT-800to1500",
+        "Wto2Q-3Jets_Bin-HT-1500to2500",
+        "Wto2Q-3Jets_Bin-HT-2500",
     },
     "zjets": {
-        "Zto2Q-4Jets_HT-200to400",
-        "Zto2Q-4Jets_HT-400to600",
-        "Zto2Q-4Jets_HT-600to800",
-        "Zto2Q-4Jets_HT-800",
-    },
-    "ewkv": {
-        "VBFWtoLNu",
-        "VBFWto2Q",
-        "VBFZto2Q",
-        "VBFZto2L",
-        "VBFZto2Nu",
-    },
+        "Zto2Q-4Jets_Bin-HT-100to400",
+        "Zto2Q-4Jets_Bin-HT-400to800",
+        "Zto2Q-4Jets_Bin-HT-800to1500",
+        "Zto2Q-4Jets_Bin-HT-1500to2500",
+        "Zto2Q-4Jets_Bin-HT-2500",
+    }
 }
 
 data_by_year = {
@@ -88,5 +63,12 @@ data_by_year = {
         "JetMET_Run2023D",
     },
     "2024": {
+        "JetMET_Run2024C",
+        "JetMET_Run2024D",
+        "JetMET_Run2024E",
+        "JetMET_Run2024F",
+        "JetMET_Run2024G",
+        "JetMET_Run2024H",
+        "JetMET_Run2024I"
     },
 }

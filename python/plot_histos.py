@@ -91,10 +91,9 @@ def plot_by_process(hists, category, year_str, outdir, region, style):
         # Define the lists of signals and backgrounds using the final group names
         # These names must have a corresponding entry in the style file with a 'contains' key
         bkg_order = ["zjets", "wjets", "other", "top"]
-        signals = ["hbb"]
+        signals = []
 
         legend_title = f"{category.capitalize()} Region, {pt_low:g} < $p_T$ < {pt_high:g} GeV"
-
         fig, (ax, rax) = ratio_plot(
             histograms_to_plot,
             sigs=signals,
