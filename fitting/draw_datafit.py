@@ -15,8 +15,7 @@ def scale_by_bin_width(hist):
             hist.SetBinError(i, hist.GetBinError(i) * width)
     return hist, width
 
-def draw(args, index: int, region: str, cat: str, logscale: bool = True):
-
+def draw(args, ptbin: int, region: str, logscale: bool = True):
     tag = args.tag
     year = args.year
     fit = args.fit
@@ -26,20 +25,14 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     rZbb = 1.0
     year_string = f"{(LUMI[year] / 1000.0):0.1f}/fb, {year}"
 
-    thisbin = f"pt{index + 1}"
-    thisbin_fit = f"ptbin{index}{cat}"
-
-    if cat in ("vbfhi", "vbflo", "vbf"):
-        thisbin = f"mjj{index + 1}"
-        thisbin_fit = f"ptbin0{cat}"
-        name = f"vbf_{region}_{thisbin}_Jetdata_nominal"
-    else:
-        name = f"{cat}_{region}_{thisbin}_Jetdata_nominal"
+    # Only "all" category, pt bins, pass/fail regions
+    cat = "all"
+    thisbin = f"pt{ptbin+1}"
+    name = f"{cat}_{region}_{thisbin}_Jetdata_nominal"
 
     dataf = ROOT.TFile(f"{common_dir}/signalregion.root", "READ")
     if not dataf or dataf.IsZombie():
         raise RuntimeError("Could not open signalregion.root")
-
 
     data_obs = dataf.Get(name)
     if not isinstance(data_obs, ROOT.TH1D):
@@ -57,8 +50,9 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
             data_obs.SetBinContent(i, 0)
             data_obs.SetBinError(i, 0)
 
+    # Fit results path
     filename = f"{common_dir}/datacards/testModel_{year}/fitDiagnosticsTest.root"
-    name_plot = f"{thisbin_fit}{region.replace('_', '')}{year}"
+    name_plot = f"ptbin{ptbin}{cat}{region}{year}"
 
     histdirname = None
     if fit == "prefit":
@@ -71,135 +65,36 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     if not f or f.IsZombie():
         raise RuntimeError(f"Could not open {filename}")
 
-    # VBF
-    VBF = f.Get(histdirname + "VBF")
-    if not VBF:
-        VBF = data_obs.Clone("VBF_empty")
-        VBF.Reset()
-    VBF, scale = scale_by_bin_width(VBF)
-    VBF.SetLineColor(ROOT.kGreen + 1)
-    VBF.SetMarkerColor(ROOT.kGreen + 1)
-    VBF.SetLineWidth(3)
+    # Only allowed processes
+    def get_hist(proc):
+        h = f.Get(histdirname + proc)
+        if not h:
+            h = data_obs.Clone(proc + "_empty")
+            h.Reset()
+        h, scale = scale_by_bin_width(h)
+        return h
 
-    # ggF
-    ggF = VBF.Clone("ggF")
-    ggF.Reset()
-    tmp = f.Get(histdirname + "ggF")
-    if tmp:
-        ggF.Add(tmp)
-    ggF, scale = scale_by_bin_width(ggF)
-    ggF.SetLineColor(ROOT.kRed + 1)
-    ggF.SetMarkerColor(ROOT.kRed + 1)
-    ggF.SetLineStyle(2)
-    ggF.SetLineWidth(3)
+    # Stack order: QCD, Wjetsbb, Wjetsc, Wjetslight, Zjetsbb, Zjetsc, Zjetslight, ttbar, VV
+    QCD = get_hist("qcd")
+    Wjetsbb = get_hist("Wjetsbb")
+    Wjetsc = get_hist("Wjetsc")
+    Wjetslight = get_hist("Wjetslight")
+    Zjetsbb = get_hist("Zjetsbb")
+    Zjetsc = get_hist("Zjetsc")
+    Zjetslight = get_hist("Zjetslight")
+    ttbar = get_hist("ttbar")
+    VV = get_hist("VV")
 
-    # VH
-    VH = VBF.Clone("VH")
-    VH.Reset()
-    tmp_wh = f.Get(histdirname + "WH")
-    if tmp_wh:
-        VH.Add(tmp_wh)
-    tmp_zh = f.Get(histdirname + "ZH")
-    if tmp_zh:
-        VH.Add(tmp_zh)
-    VH, scale = scale_by_bin_width(VH)
-    VH.SetLineColor(ROOT.kBlue + 1)
-    VH.SetMarkerColor(ROOT.kBlue + 1)
-    VH.SetLineStyle(2)
-    VH.SetLineWidth(3)
-
-    # bkg Higgs
-    bkgHiggs = VBF.Clone("bkgHiggs")
-    bkgHiggs.Reset()
-    tmp_tth = f.Get(histdirname + "ttH")
-    if tmp_tth:
-        bkgHiggs.Add(tmp_tth)
-    bkgHiggs, scale = scale_by_bin_width(bkgHiggs)
-    bkgHiggs.SetLineWidth(1)
-    bkgHiggs.SetLineColor(ROOT.kBlack)
-    bkgHiggs.SetFillColor(ROOT.kOrange)
-
-    # VV
-    VV = VBF.Clone("VV")
-    VV.Reset()
-    tmp_vv = f.Get(histdirname + "VV")
-    if tmp_vv:
-        VV.Add(tmp_vv)
-    VV, scale = scale_by_bin_width(VV)
-    VV.SetLineWidth(1)
-    VV.SetLineColor(ROOT.kBlack)
-    VV.SetFillColor(ROOT.kOrange - 3)
-
-    # single t
-    singlet = VBF.Clone("singlet")
-    singlet.Reset()
-    tmp_sing = f.Get(histdirname + "singlet")
-    if tmp_sing:
-        singlet.Add(tmp_sing)
-    singlet, scale = scale_by_bin_width(singlet)
-    singlet.SetLineWidth(1)
-    singlet.SetLineColor(ROOT.kBlack)
-    singlet.SetFillColor(ROOT.kPink + 6)
-
-    # ttbar
-    ttbar = VBF.Clone("ttbar")
-    ttbar.Reset()
-    tmp_tt = f.Get(histdirname + "ttbar")
-    if tmp_tt:
-        ttbar.Add(tmp_tt)
-    ttbar, scale = scale_by_bin_width(ttbar)
-    ttbar.SetLineColor(ROOT.kBlack)
-    ttbar.SetFillColor(ROOT.kViolet - 5)
-
-    # Z + jets
-    Zjets = VBF.Clone("Zjets")
-    Zjets.Reset()
-    tmp_Zjets = f.Get(histdirname + "Zjets")
-    if tmp_Zjets:
-        Zjets.Add(tmp_Zjets)
-    tmp_ewkz = f.Get(histdirname + "EWKZ")
-    if tmp_ewkz:
-        Zjets.Add(tmp_ewkz)
-    Zjets, scale = scale_by_bin_width(Zjets)
-    Zjets.SetLineColor(ROOT.kBlack)
-    Zjets.SetFillColor(ROOT.kAzure + 8)
-
-    # Z(bb) + jets
-    Zjetsbb = VBF.Clone("Zjetsbb")
-    Zjetsbb.Reset()
-    tmp_Zjetsbb = f.Get(histdirname + "Zjetsbb")
-    if tmp_Zjetsbb:
-        Zjetsbb.Add(tmp_Zjetsbb)
-    tmp_ewkzb = f.Get(histdirname + "EWKZbb")
-    if tmp_ewkzb:
-        Zjetsbb.Add(tmp_ewkzb)
-    Zjetsbb, scale = scale_by_bin_width(Zjetsbb)
-    Zjetsbb.Scale(rZbb)
-    Zjetsbb.SetLineColor(ROOT.kBlack)
-    Zjetsbb.SetFillColor(ROOT.kAzure - 1)
-
-    # W + jets
-    Wjets = VBF.Clone("Wjets")
-    Wjets.Reset()
-    tmp_Wjets = f.Get(histdirname + "Wjets")
-    if tmp_Wjets:
-        Wjets.Add(tmp_Wjets)
-    tmp_ewk = f.Get(histdirname + "EWKW")
-    if tmp_ewk:
-        Wjets.Add(tmp_ewk)
-    Wjets, scale = scale_by_bin_width(Wjets)
-    Wjets.SetLineColor(ROOT.kBlack)
-    Wjets.SetFillColor(ROOT.kGray)
-
-    # QCD
-    qcd= VBF.Clone("qcd")
-    qcd.Reset()
-    tmp_qcd = f.Get(histdirname + "qcd")
-    if tmp_qcd:
-        qcd.Add(tmp_qcd)
-    qcd, scale = scale_by_bin_width(qcd)
-    qcd.SetLineColor(ROOT.kBlack)
-    qcd.SetFillColor(ROOT.kWhite)
+    # Set colors
+    QCD.SetFillColor(ROOT.kGray)
+    Wjetsbb.SetFillColor(ROOT.kGreen+2)
+    Wjetsc.SetFillColor(ROOT.kGreen-3)
+    Wjetslight.SetFillColor(ROOT.kGreen-7)
+    Zjetsbb.SetFillColor(ROOT.kAzure-1)
+    Zjetsc.SetFillColor(ROOT.kAzure+2)
+    Zjetslight.SetFillColor(ROOT.kAzure+8)
+    ttbar.SetFillColor(ROOT.kViolet-5)
+    VV.SetFillColor(ROOT.kOrange-3)
 
     # Total background
     TotalBkg = f.Get(histdirname + "total_background")
@@ -223,24 +118,15 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     TotalBkg.GetXaxis().SetTitle("m_{sd} [GeV]")
 
     bkg = ROOT.THStack("bkg", "")
-    if logscale:
-        bkg.Add(bkgHiggs)
-        bkg.Add(VV)
-        bkg.Add(singlet)
-        bkg.Add(ttbar)
-        bkg.Add(Zjets)
-        bkg.Add(Zjetsbb)
-        bkg.Add(Wjets)
-        bkg.Add(qcd)
-    else:
-        bkg.Add(qcd)
-        bkg.Add(Wjets)
-        bkg.Add(Zjetsbb)
-        bkg.Add(Zjets)
-        bkg.Add(ttbar)
-        bkg.Add(singlet)
-        bkg.Add(VV)
-        bkg.Add(bkgHiggs)
+    bkg.Add(QCD)
+    bkg.Add(Wjetsbb)
+    bkg.Add(Wjetsc)
+    bkg.Add(Wjetslight)
+    bkg.Add(Zjetsbb)
+    bkg.Add(Zjetsc)
+    bkg.Add(Zjetslight)
+    bkg.Add(ttbar)
+    bkg.Add(VV)
 
     ROOT.gStyle.SetOptTitle(0)
     ROOT.gStyle.SetOptStat(0)
@@ -272,20 +158,18 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     if logscale:
         pad1.SetLogy()
 
-    print("QCD:", qcd.Integral())
-    print("Wjets:", Wjets.Integral())
-    print("Zjets:", Zjets.Integral())
+    print("QCD:", QCD.Integral())
+    print("Wjetsbb:", Wjetsbb.Integral())
+    print("Wjetsc:", Wjetsc.Integral())
+    print("Wjetslight:", Wjetslight.Integral())
     print("Zjetsbb:", Zjetsbb.Integral())
+    print("Zjetsc:", Zjetsc.Integral())
+    print("Zjetslight:", Zjetslight.Integral())
     print("ttbar:", ttbar.Integral())
-    print("singlet:", singlet.Integral())
     print("VV:", VV.Integral())
-    print("bkgHiggs:", bkgHiggs.Integral())
 
     TotalBkg.Draw("e2")
     bkg.Draw("histsame")
-    ggF.Draw("histsame")
-    VBF.Draw("histsame")
-    VH.Draw("histsame")
     data_obs.Draw("pesame")
     data_obs.Draw("axissame")
 
@@ -299,17 +183,15 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
 
     leg.AddEntry(data_obs, "Data", "p")
     leg.AddEntry(TotalBkg, "Bkg. Unc.", "f")
-    leg.AddEntry(qcd, "QCD", "f")
-    leg.AddEntry(Wjets, "W", "f")
-    leg.AddEntry(Zjets, "Z(qq)", "f")
-    leg.AddEntry(Zjetsbb, "Z(bb)", "f")
-    leg.AddEntry(ttbar, "t#bar{t}", "f")
-    leg.AddEntry(singlet, "Single t", "f")
+    leg.AddEntry(QCD, "QCD", "f")
+    leg.AddEntry(Wjetsbb, "W+bb", "f")
+    leg.AddEntry(Wjetsc, "W+c", "f")
+    leg.AddEntry(Wjetslight, "W+light", "f")
+    leg.AddEntry(Zjetsbb, "Z+bb", "f")
+    leg.AddEntry(Zjetsc, "Z+c", "f")
+    leg.AddEntry(Zjetslight, "Z+light", "f")
+    leg.AddEntry(ttbar, "ttbar", "f")
     leg.AddEntry(VV, "VV", "f")
-    leg.AddEntry(bkgHiggs, "Bkg. H", "f")
-    leg.AddEntry(ggF, "ggF", "l")
-    leg.AddEntry(VBF, "VBF", "l")
-    leg.AddEntry(VH, "VH", "l")
 
     leg.Draw()
 
@@ -325,29 +207,18 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     l2.SetTextSize(textsize1)
     l2.DrawLatex(0.7, 0.92, year_string)
 
-    text3 = "PN BB+CC Fail Region" 
-    if region == "pass_bb":
-        text3 = "PN BB Pass Region"
-    elif region == "pass_cc":
-        text3 = "PN CC Pass Region"
+    text3 = f"{region.capitalize()} Region"
     l3 = ROOT.TLatex()
     l3.SetNDC()
     l3.SetTextFont(42)
     l3.SetTextSize(textsize1)
     l3.DrawLatex(0.2, 0.77, text3)
 
-    # Category text
     l4 = ROOT.TLatex()
     l4.SetNDC()
     l4.SetTextFont(42)
     l4.SetTextSize(textsize1)
-    if cat.lower() == "ggf":
-        text2 = f"ggF category p_{{T}} bin {index+1}"
-    elif cat.lower() in ("vbfhi", "vbflo", "vbf"):
-        text2 = f"VBF category m_{{jj}} bin {index+1}"
-    else:
-        text2 = f"VH category p_{{T}} bin {index+1}"
-    l4.DrawLatex(0.2, 0.72, text2)
+    l4.DrawLatex(0.2, 0.72, f"all category p_{{T}} bin {ptbin+1}")
 
     # ratio panel
     pad2.cd()
@@ -357,13 +228,6 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     data_obs_sub = data_obs.Clone("data_obs_ratio")
     data_obs_sub.Reset()
 
-    VBF_sub = VBF.Clone("VBF_sub")
-    VBF_sub.Reset()
-    ggF_sub = ggF.Clone("ggF_sub")
-    ggF_sub.Reset()
-    VH_sub = VH.Clone("VH_sub")
-    VH_sub.Reset()
-
     nbins = TotalBkg_sub.GetNbinsX()
     for i in range(1, nbins + 1):
         err_data = data_obs.GetBinError(i)
@@ -372,16 +236,10 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
             diff = (data_obs.GetBinContent(i) - TotalBkg.GetBinContent(i)) / err_data
             data_obs_sub.SetBinContent(i, diff)
             data_obs_sub.SetBinError(i, 1.0)
-            VBF_sub.SetBinContent(i, VBF.GetBinContent(i) / err_data)
-            ggF_sub.SetBinContent(i, ggF.GetBinContent(i) / err_data)
-            VH_sub.SetBinContent(i, VH.GetBinContent(i) / err_data)
         else:
             TotalBkg_sub.SetBinError(i, 0)
             data_obs_sub.SetBinContent(i, 0)
             data_obs_sub.SetBinError(i, 0)
-            VBF_sub.SetBinContent(i, 0)
-            ggF_sub.SetBinContent(i, 0)
-            VH_sub.SetBinContent(i, 0)
 
     TotalBkg_sub.GetYaxis().SetTitleSize(textsize2)
     TotalBkg_sub.GetYaxis().SetLabelSize(textsize2)
@@ -401,9 +259,6 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
 
     min2 = data_obs_sub.GetMinimum()
     max2 = data_obs_sub.GetMaximum()
-    if not "pass" in region:
-        max2 += 1.0
-        min2 -= 1.0
     TotalBkg_sub.GetYaxis().SetRangeUser(1.3 * min2, 1.3 * max2)
 
     TotalBkg_sub.Draw("e2")
@@ -421,15 +276,13 @@ def draw(args, index: int, region: str, cat: str, logscale: bool = True):
     dataf.Close()
 
 if __name__ == "__main__":
-
-
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "--year",
         help="year",
         type=str,
         required=True,
-        choices=["2022", "2022EE", "2023", "2023BPix"],
+        choices=["2022", "2022EE", "2023", "2023BPix", "2024"],
     )
     parser.add_argument(
         "--tag",
@@ -446,9 +299,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    for reg in ["fail", "pass_bb", "pass_cc"]:
-        draw(args, index=0, region=reg, cat="vbf", logscale=False)
-        # draw(args, index=1, region=reg, cat="vbfhi", logscale=False)
-        for cat in ["vh", "ggf"]:
-            for i in range(0, 1):
-                draw(args, index=i, region=reg, cat=cat, logscale=False)
+    # Only "fail" and "pass" regions, three pt bins, "all" category
+    for region in ["fail", "pass"]:
+        for ptbin in range(3):
+            draw(args, ptbin=ptbin, region=region, logscale=False)

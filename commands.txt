@@ -1,0 +1,27 @@
+cd data
+python make_filelists.py v15
+cd ..
+
+python src/run.py --sample TT --subsample TTto4Q --starti 0 --endi 1 --year 2024 --nano-version v15 --save-skim-nosysts #PU files do not exist yet for 2024
+
+python src/condor/submit.py --tag 16Dec25  --samples TT --subsamples TTto4Q --git-branch main --run-mode save-skim-nosysts --submit --year 2024 --nano-version v15
+
+python src/condor/check_jobs.py  --location /eos/uscms/store/user/roguljic/lpchmdsrun3/ --tag 17Dec2_v15 --year 2024
+
+cd python
+python make_histos.py --region signal-all --year 2024
+cd ..
+
+python plot_histos.py --year 2024 --region signal-all --indir histograms/ --outdir plots/by_process --plot-type process
+
+
+nohup python src/condor/submit_from_yaml.py --tag 17Dec2 --yaml src/submit_configs/hdms.yaml --year 2024 --git-branch main --nano-version v15 --run-mode save-skim-nosysts --submit &> tmp/submitout.txt &
+
+
+
+cd fitting
+python make_hists.py --year 2024 --tag 17Dec2_v15
+python make_datacards.py --year 2024 --tag 17Dec2_v15
+cd results/17Dec2_v15/2024/datacards/testModel_2024
+./build.sh
+combine -M FitDiagnostics model_combined.txt --saveWithUncertainties --saveShapes --robustHesse 1
