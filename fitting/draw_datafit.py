@@ -1,6 +1,7 @@
 import os
 import ROOT
 import argparse
+import json
 
 from hbb.common_vars import LUMI
 
@@ -21,6 +22,13 @@ def draw(args, ptbin: int, region: str, logscale: bool = True):
     fit = args.fit
 
     common_dir = f"results/{tag}/{year}"
+
+    # Load pt bin edges from setup.json
+    setup_path = os.path.join(os.path.dirname(__file__), "setup.json")
+    with open(setup_path, "r") as fsetup:
+        setup = json.load(fsetup)
+    pt_bins = setup["categories"]["all"]["bins"]
+    pt_ranges = [f"{pt_bins[i]}-{pt_bins[i+1]}" for i in range(len(pt_bins)-1)]
 
     rZbb = 1.0
     year_string = f"{(LUMI[year] / 1000.0):0.1f}/fb, {year}"
@@ -105,6 +113,37 @@ def draw(args, ptbin: int, region: str, logscale: bool = True):
     TotalBkg.SetLineColor(ROOT.kRed)
     TotalBkg.SetFillColor(ROOT.kRed)
     TotalBkg.SetFillStyle(3003)
+
+    # Mask bins and collect nonzero bin indices
+    nbins = TotalBkg.GetNbinsX()
+    bkg_hists = [QCD, Wjetsbb, Wjetsc, Wjetslight, Zjetsbb, Zjetsc, Zjetslight, ttbar, VV]
+    nonzero_bins = []
+    for i in range(1, nbins + 1):
+        if TotalBkg.GetBinContent(i) == 0:
+            bin_low = TotalBkg.GetBinLowEdge(i)
+            bin_up = TotalBkg.GetBinLowEdge(i+1)
+            pt_info = pt_ranges[ptbin] if ptbin < len(pt_ranges) else "unknown"
+            print(f"Warning: TotalBkg massbin={i} [{bin_low}-{bin_up} GeV] is zero for ptbin={ptbin} [{pt_info} GeV], region={region}. Masking it.")
+            data_obs.SetBinContent(i, 0)
+            data_obs.SetBinError(i, 0)
+            for h in bkg_hists:
+                h.SetBinContent(i, 0)
+                h.SetBinError(i, 0)
+            TotalBkg.SetBinContent(i, 0)
+            TotalBkg.SetBinError(i, 0)
+        else:
+            nonzero_bins.append(i)
+
+    # Adjust x-axis range to only show nonzero bins
+    if nonzero_bins:
+        min_bin = nonzero_bins[0]
+        max_bin = nonzero_bins[-1]
+        min_x = TotalBkg.GetBinLowEdge(min_bin)
+        max_x = TotalBkg.GetBinLowEdge(max_bin + 1)
+        TotalBkg.GetXaxis().SetRangeUser(min_x, max_x)
+    else:
+        # fallback: show full range
+        TotalBkg.GetXaxis().SetRangeUser(TotalBkg.GetBinLowEdge(1), TotalBkg.GetBinLowEdge(nbins + 1))
 
     max_val = TotalBkg.GetMaximum()
     if data_obs.GetMaximum() > max_val:

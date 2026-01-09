@@ -32,49 +32,6 @@ def badtemp_ma(hvalues, mask=None):
     else:
         return False
 
-def syst_variation(numerator,denominator):
-    """
-    Get systematic variation relative to nominal (denominator)
-    """
-    var = np.divide(numerator,denominator)
-    var[np.where(numerator==0)] = 1
-    var[np.where(denominator==0)] = 1
-
-    return var
-
-def smass(sName):
-    if sName in ['ggF','VBF','WH','ZH','ttH']:
-        _mass = 125.
-    elif sName in ['Wjets','EWKW','ttbar','singlet','VV']:
-        _mass = 80.379
-    elif sName in ['Zjets','Zjetsbb','EWKZ','EWKZbb']:
-        _mass = 91.
-    else:
-        raise ValueError("What is {}".format(sName))
-    return _mass
-
-def one_bin(year, tag, sName, region, ptbin, cat, syst):
-    f = ROOT.TFile.Open(f"results/{tag}/{year}/signalregion.root")
-
-    name = cat+region
-    if cat == 'ggf_':
-        name += 'pt'+str(ptbin)+'_'
-    elif cat == 'vbf_':
-        name += 'mjj'+str(ptbin)+'_'
-    elif cat == 'vh_':
-        name += 'pt'+str(ptbin)+'_'
-    elif cat == 'mucr_':
-        name += 'pt'+str(ptbin)+'_'
-
-    name += sName+'_'+syst
-
-    h = f.Get(name)
-    newh = h.Rebin(h.GetNbinsX())
-    sumw = [newh.GetBinContent(1)]
-    sumw2 = [newh.GetBinError(1)]
-
-    return (np.array(sumw), np.array([0., 1.]), "onebin", np.array(sumw2))
-
 def get_template(year, tag, sName, region, ptbin, cat, obs, syst):
     """
     Read msd template from root file
@@ -101,18 +58,6 @@ def get_template(year, tag, sName, region, ptbin, cat, obs, syst):
             sumw2 += [h.GetBinError(i)*h.GetBinError(i)]
 
     return (np.array(sumw), obs.binning, obs.name, np.array(sumw2))
-
-def shape_to_num(var, nom, clip=1.5):
-    nom_rate = np.sum(nom)
-    var_rate = np.sum(var)
-
-    if abs(var_rate/nom_rate) > clip:
-        var_rate = clip*nom_rate
-
-    if var_rate < 0:
-        var_rate = 0
-
-    return var_rate/nom_rate
 
 def plot_mctf(tf_MCtempl, msdbins, name,year,tag):
     """
@@ -184,9 +129,9 @@ def plot_mctf(tf_MCtempl, msdbins, name,year,tag):
 
     return
 
-def ggfvbf_rhalphabet(args):
+def hmds_rhalphabet(args):
     """ 
-    Create the data cards!
+    Create the datacards!
     """
 
     year = args.year
@@ -210,63 +155,7 @@ def ggfvbf_rhalphabet(args):
 
     total_model_bins = []
 
-    # TT params
-    tqqeffSF = rl.IndependentParameter(f'tqqeffSF_{year}', 1., -50, 50)
-    tqqeffBCSF = rl.IndependentParameter(f'tqqeffBCSF_{year}', 1., -50, 50)
-    tqqnormSF = rl.IndependentParameter(f'tqqnormSF_{year}', 1., -50, 50)
-
     sys_lumi_uncor = rl.NuisanceParameter(f'CMS_lumi_13p6TeV_{year[:4]}', 'lnN')
-
-    #Systematics 
-    sys_dict = {}
-    sys_dict['pileup'] = rl.NuisanceParameter(f'CMS_PU_{year}', 'lnN')
-
-    sys_dict['JES'] = rl.NuisanceParameter(f'CMS_scale_j_{year}', 'lnN')
-    sys_dict['JER'] = rl.NuisanceParameter(f'CMS_res_j_{year}', 'lnN')
-    sys_dict['UES'] = rl.NuisanceParameter(f'CMS_ues_j_{year}', 'lnN')
-
-    sys_dict['MuonPTScale'] = rl.NuisanceParameter(f'CMS_scale_m_{year}', 'lnN')
-    sys_dict['MuonPTRes'] = rl.NuisanceParameter(f'CMS_res_m_{year}', 'lnN')
-
-    sys_dict[f'btagSFb_{year}'] = rl.NuisanceParameter(f'CMS_btagSFb_{year}', 'lnN')
-    sys_dict[f'btagSFc_{year}'] = rl.NuisanceParameter(f'CMS_btagSFc_{year}', 'lnN')
-    sys_dict[f'btagSFlight_{year}'] = rl.NuisanceParameter(f'CMS_btagSFlight_{year}', 'lnN')
-    sys_dict['btagSFb_correlated'] = rl.NuisanceParameter(f'CMS_btagSFb_correlated_{year}', 'lnN')
-    sys_dict['btagSFc_correlated'] = rl.NuisanceParameter(f'CMS_btagSFc_correlated_{year}', 'lnN')
-    sys_dict['btagSFlight_correlated'] = rl.NuisanceParameter(f'CMS_btagSFlight_correlated_{year}', 'lnN')
-
-    exp_systs = [
-        # 'pileup', 
-        # 'JES', 'JER', 'JER',
-        # f'btagSFb_{year}',
-        # f'btagSFc_{year}',
-        # f'btagSFlight_{year}'
-        # 'btagSFb_correlated',
-        # 'btagSFc_correlated',
-        # 'btagSFlight_correlated',
-        # 'MuonPTScale', 'MuonPTRes'
-    ]
-
-    pdf_Higgs_ggF = rl.NuisanceParameter('pdf_Higgs_ggF','lnN')
-    pdf_Higgs_VBF = rl.NuisanceParameter('pdf_Higgs_VBF','lnN')
-    pdf_Higgs_VH  = rl.NuisanceParameter('pdf_Higgs_VH','lnN')
-    pdf_Higgs_ttH = rl.NuisanceParameter('pdf_Higgs_ttH','lnN')
-
-    scale_ggF = rl.NuisanceParameter('QCDscale_ggF', 'lnN')
-    scale_VBF = rl.NuisanceParameter('QCDscale_VBF', 'lnN')
-    scale_VH = rl.NuisanceParameter('QCDscale_VH', 'lnN')
-    scale_ttH = rl.NuisanceParameter('QCDscale_ttH', 'lnN')
-
-    isr_ggF = rl.NuisanceParameter('ISRPartonShower_ggF', 'lnN')
-    isr_VBF = rl.NuisanceParameter('ISRPartonShower_VBF', 'lnN')
-    isr_VH = rl.NuisanceParameter('ISRPartonShower_VH', 'lnN')
-    isr_ttH = rl.NuisanceParameter('ISRPartonShower_ttH', 'lnN')
-
-    fsr_ggF = rl.NuisanceParameter('FSRPartonShower_ggF', 'lnN')
-    fsr_VBF = rl.NuisanceParameter('FSRPartonShower_VBF', 'lnN')
-    fsr_VH = rl.NuisanceParameter('FSRPartonShower_VH', 'lnN')
-    fsr_ttH = rl.NuisanceParameter('FSRPartonShower_ttH', 'lnN')
-
     validbins = {}
 
     msd_cfg = setup["observable"]
@@ -277,7 +166,6 @@ def ggfvbf_rhalphabet(args):
         'all'
     ]
 
-    # Only use the allowed processes
     allowed_samples = [
         'Zjetsbb', 'Zjetsc', 'Zjetslight',
         'Wjetsbb', 'Wjetsc', 'Wjetslight',
@@ -292,12 +180,15 @@ def ggfvbf_rhalphabet(args):
         ptbins = np.array(cats_cfg[cat]["bins"])
         npt = len(ptbins) - 1
 
-        # here we derive these all at once with 2D array                            
+        # bin centers, in pt weighted towards lower end because the spectrum is steeply falling             
         ptpts, msdpts = np.meshgrid(ptbins[:-1] + 0.3 * np.diff(ptbins), msdbins[:-1] + 0.5 * np.diff(msdbins), indexing='ij')
         rhopts = 2*np.log(msdpts/ptpts)
-        #ptscaled = (ptpts - 450.) / (1200. - 450.)#This is in hbb, hardcoded edges!
         ptscaled = (ptpts - ptbins[0]) / (ptbins[-1] - ptbins[0])
-        rhoscaled = (rhopts - (-6.)) / ((-2.1) - (-6.)) #rho=-2.1/-6. corresponds to m/pT 0.35/0.05
+        rho_min = -6.
+        rho_max = -2.1
+        rhoscaled = (rhopts - rho_min) / (rho_max - rho_min) 
+        #rho_min/max=-2.1/-6. corresponds to m/pT 0.35/0.05
+        #for pt=450 GeV, this is msd~160/23 GeV
         validbins[cat] = (rhoscaled >= 0.) & (rhoscaled <= 1.)
         rhoscaled[~validbins[cat]] = 1    
 
@@ -317,7 +208,7 @@ def ggfvbf_rhalphabet(args):
 
                 binindex = ptbin
 
-                # QCD templates from file                           
+                # QCD templates from MC file                           
                 failTempl = get_template(year, tag, 'QCD', 'fail_', binindex+1, cat[:3]+'_', obs=msd, syst='nominal')
                 passTempl = get_template(year, tag, 'QCD', f'pass_', binindex+1, cat[:3]+'_', obs=msd, syst='nominal')
                 
@@ -333,7 +224,7 @@ def ggfvbf_rhalphabet(args):
 
             # initial values                                         
             initF = f"results/{tag}/{year}/initial_vals/initial_vals_{cat}.json"                       
-            print('Initial fit values read from file initial_vals*')
+            print(f'Initial fit values read from file {initF}')
             with open(initF) as f:
                 initial_vals = np.array(json.load(f)['initial_vals'])
 
@@ -361,6 +252,7 @@ def ggfvbf_rhalphabet(args):
                         ]
                     )
                 sigmascale = 10.
+                # Pulling qcdparam by 1sigma will scale the initial value by sigmascale / stat. uncertainty
                 scaledparams = (
                         failObs 
                         * (1 + sigmascale/np.maximum(1., np.sqrt(failObs))) ** qcdparams
@@ -421,7 +313,9 @@ def ggfvbf_rhalphabet(args):
             raise RuntimeError(f'Could not fit qcd after 5 tries')
 
         print("Fitted qcd for category " + cat)    
-
+        
+        plot_mctf(tf_MCtempl, msdbins, f"{cat}_{year}", year, tag)
+        
         param_names = [p.name for p in tf_MCtempl.parameters.reshape(-1)]
         decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_MCtempl.name + '_deco', qcdfit, param_names)
         tf_MCtempl.parameters = decoVector.correlated_params.reshape(tf_MCtempl.parameters.shape)
@@ -439,10 +333,6 @@ def ggfvbf_rhalphabet(args):
 
     # build actual fit model now
     model = rl.Model('testModel_'+year)
-
-    # exclude QCD from MC samps
-    samps = ['Zjets','ttbar','VV']
-    sigs = ['Wjets'] #Dummy signal
 
     for cat in cats:
 
@@ -571,4 +461,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    ggfvbf_rhalphabet(args)
+    hmds_rhalphabet(args)

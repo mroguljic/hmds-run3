@@ -23,5 +23,7 @@ cd fitting
 python make_hists.py --year 2024 --tag 17Dec2_v15
 python make_datacards.py --year 2024 --tag 17Dec2_v15
 cd results/17Dec2_v15/2024/datacards/testModel_2024
-./build.sh
+source build.sh
 combine -M FitDiagnostics model_combined.txt --saveWithUncertainties --saveShapes --robustHesse 1
+cd -
+python draw_datafit.py --tag 17Dec2_v15 --fit postfit --year 2024
