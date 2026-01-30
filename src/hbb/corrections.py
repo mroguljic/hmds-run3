@@ -77,12 +77,6 @@ def get_pog_json(obj: str, year: str) -> str:
 
     year = years[year]
 
-    # Manual override for 2024 pileup JSON as not yet provided in central repo
-    if obj == "pileup" and year == "2024":
-        preliminary_pu_2024 = "/cvmfs/cms-griddata.cern.ch/cat/metadata/LUM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/2025-12-02/puWeights_BCDEFGHI.json.gz"
-        print(f"[WARNING] Using preliminary 2024 PU weights from {preliminary_pu_2024}")
-        return preliminary_pu_2024
-
     return f"{pog_correction_path}/POG/{pog_json[0]}/{year}/{pog_json[1]}"
 
 
@@ -116,7 +110,7 @@ def add_pileup_weight(weights: Weights, year: str, nPU):
         "2022EE": "Collisions2022_359022_362760_eraEFG_GoldenJson",
         "2023": "Collisions2023_366403_369802_eraBC_GoldenJson",
         "2023BPix": "Collisions2023_369803_370790_eraD_GoldenJson",
-        "2024": "Collisions24_BCDEFGHI_goldenJSON" #From the preliminary file!
+        #"2024": "", Not yet derived by pog
     }[year]
     # evaluate and clip up to 4 to avoid large weights
     values["nominal"] = ak_clip(cset[corr].evaluate(nPU, "nominal"), 0, 4)

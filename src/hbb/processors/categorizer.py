@@ -274,10 +274,6 @@ class categorizer(SkimmerABC):
             events.Jet, self._year, self._nano_version, events.Rho.fixedGridRhoFastjetAll
         )
 
-        # Add pt_gen to jets and fatjets (for JERC)
-        jets = add_pt_gen(jets, events.GenJet.pt, events.Jet.genJetIdx)
-        fatjets = add_pt_gen(fatjets, events.GenJetAK8.pt, events.FatJet.genJetAK8Idx)
-
         if self._nano_version == "v14_private":
             # subjets in PFNano reprocessing break the fatjet jercs for whatever reason
             keep_fields = [
@@ -830,18 +826,3 @@ class categorizer(SkimmerABC):
 
     def postprocess(self, accumulator):
         pass
-
-
-def add_pt_gen(jets, genjet_pt, genjet_idx):
-    """
-    Add pt_gen field to jets array.
-    For each jet, set pt_gen = genjet_pt[genjet_idx] if genjet_idx is valid and in bounds, else pt_gen = -1.
-    """
-    n_genjets = ak.num(genjet_pt, axis=1)
-    idx = genjet_idx
-    valid = (idx >= 0) & (idx < n_genjets[:, None])
-    safe_idx = ak.where(valid, idx, 0)
-    pt_vals = genjet_pt[safe_idx]
-    pt_gen = ak.where(valid, pt_vals, -1.0)
-    jets = ak.with_field(jets, pt_gen, "pt_gen")
-    return jets
