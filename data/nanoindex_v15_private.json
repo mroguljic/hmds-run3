@@ -1,0 +1,21 @@
+{
+    "2024": {
+        "Signal": {
+            "Signal_20260120_1723": [
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_13.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_14.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_17.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_21.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_3.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_38.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_41.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_46.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_47.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_48.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_5.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_6.root",
+                "root://cmseos.fnal.gov//store/user/roguljic/HMDS/signal/Run3Summer24NanoAODv15_9.root"
+            ]
+        }
+    }
+}

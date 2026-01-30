@@ -34,13 +34,14 @@ def fill_hists(outdict, events, region, reg_cfg, obs_cfg, qq_true, s, j_var=None
         Txbb = data["FatJet0_ParTPXbbVsQCD"]
         Txcc = data["FatJet0_ParTPXccVsQCD"]
         Txbbxcc = data["FatJet0_ParTPXbbXcc"]
+        Txbbx4q = data["FatJet0_ParTPXbbX4qVsQCD"]
         genf = data["GenFlavor"]
 
         pre_selection = (obs_br > obs_cfg["min"]) & (obs_br < obs_cfg["max"])
 
         selection_dict = {
-            "fail": pre_selection & (Txbbxcc <= 0.82),
-            "pass": pre_selection & (Txbbxcc  > 0.82)
+            "fail": pre_selection & (Txbbx4q <= 0.82),
+            "pass": pre_selection & (Txbbx4q  > 0.82)
         }
 
         cut_bb = (genf == 3)

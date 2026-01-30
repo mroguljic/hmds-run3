@@ -116,7 +116,7 @@ def get_files(dataset, version):
 
 def main():
     version = sys.argv[1]
-    allowed_values = ["v12", "v12v2_private", "v14_private", "v15"]
+    allowed_values = ["v12", "v12v2_private", "v14_private", "v15", "v15_private"]
 
     try:
         version = sys.argv[1]

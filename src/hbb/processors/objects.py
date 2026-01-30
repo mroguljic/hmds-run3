@@ -161,6 +161,9 @@ def set_ak8jets(fatjets: FatJetArray, year: str, nano_version: str, event_rho):
         fatjets["ParTPXbbXcc"] = (fatjets.globalParT3_Xbb + fatjets.globalParT3_Xcc) / (
             fatjets.globalParT3_Xbb + fatjets.globalParT3_Xcc + fatjets.globalParT3_QCD
         )
+        fatjets["ParTPXbbX4qVsQCD"] = (fatjets.globalParT3_Xbb + fatjets.globalParT3_XWW4q) / (
+            fatjets.globalParT3_Xbb + fatjets.globalParT3_XWW4q + fatjets.globalParT3_QCD
+        )
 
         # ParT masses were trained with the masses WITHOUT the jet mass correction, so we have to undo the correction here
         fatjets["ParTmassGeneric"] = (
