@@ -27,3 +27,9 @@ source build.sh
 combine -M FitDiagnostics model_combined.txt --saveWithUncertainties --saveShapes --robustHesse 1
 cd -
 python draw_datafit.py --tag 17Dec2_v15 --fit postfit --year 2024
+
+
+#New production
+python src/condor/submit.py --tag 4Feb26 --samples TT --git-branch main --run-mode save-skim-nosysts --submit --year 2024 --nano-version v15 #Test
+
+nohup python src/condor/submit_from_yaml.py --tag 4Feb26 --yaml src/submit_configs/hdms_no_tt.yaml --year 2024 --git-branch main --nano-version v15 --run-mode save-skim-nosysts --submit &> tmp/submitout.txt &
