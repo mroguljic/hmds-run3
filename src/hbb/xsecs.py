@@ -257,3 +257,6 @@ xsecs["VBFWtoLNu"] = 41.02
 xsecs["VBFZto2Q"] = 13.67
 xsecs["VBFZto2L"] = 7.659
 xsecs["VBFZto2Nu"] = 4.12
+
+#HMDS
+xsecs["Signal"] = 1.0
