@@ -77,7 +77,7 @@ def main(args):
     region = args.region
 
     MAIN_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
-    dir_name = "17Dec2_v15/"
+    dir_name = "4Feb26_v15/"
     path_to_dir = f"{MAIN_DIR}/{dir_name}/"
 
     load_columns_mc = [
