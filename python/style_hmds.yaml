@@ -1,0 +1,107 @@
+data:
+  label: Data
+  color: black
+  hatch: null
+qcd:
+  label: QCD
+  color: '#94a4a2'
+  hatch: null
+total:
+  label: total
+  color: '#3f90da'
+  hatch: null
+total_signal:
+  label: total_signal
+  color: '#ffa90e'
+  hatch: null
+total_background:
+  label: total_background
+  color: '#bd1f01'
+  hatch: null
+
+zcc:
+  label: $Z\rightarrow c\bar{c}$
+  color: '#d62828'
+  hatch: null
+zbb:
+  label: $Z\rightarrow b\bar{b}$
+  color: '#f77f00'
+  hatch: null
+zqq:
+  label: $Z\rightarrow q\bar{q}$
+  color: '#fcbf49'
+  hatch: null
+wcq:
+  label: $W\rightarrow c\bar{q}$
+  color: '#588157'
+  hatch: null
+wqq:
+  label: $W\rightarrow q\bar{q}$
+  color: '#84a98c'
+  hatch: null
+
+zjets:
+  label: $Z\rightarrow q\bar{q}$
+  color: '#2a9d8f'
+  hatch: null
+wjets:
+  label: $W\rightarrow q\bar{q}$
+  color: '#84a98c'
+  hatch: null
+
+hbb:
+  label: $H\rightarrow b\bar{b}$
+  color: '#4E5A7E'
+  hatch: null
+  contains:
+  - ggf-hbb
+  - vh-hbb
+  - vbf-hbb
+
+top:
+  label: Top
+  color: 'teal'
+  hatch: null
+  contains:
+  - tt
+  - singletop
+
+other:
+  label: $Other$
+  color: 'grey'
+  hatch: null
+  contains:
+  - diboson
+  - ewkv
+
+Signal:
+  label: HMDS
+  color: 'red'
+  hatch: null
+  contains:
+  - Signal
+
+
+# Z-jets colors (shades of blue-green)
+zjets_b-jet:
+  label: 'Z->b-jet'
+  color: '#005f73' # Darker blue-green
+  hatch: null
+zjets_c-jet:
+  label: 'Z->c-jet'
+  color: '#0a9396' # Medium blue-green
+  hatch: null
+zjets_light-jet:
+  label: 'Z->light-jet'
+  color: '#94d2bd' # Lighter blue-green
+  hatch: null
+
+# W-jets colors (shades of green)
+wjets_c-jet:
+  label: 'W->c-jet'
+  color: '#52b788' # Medium green
+  hatch: null
+wjets_light-jet:
+  label: 'W->light-jet'
+  color: '#b7e4c7' # Lighter green
+  hatch: null

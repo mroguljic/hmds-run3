@@ -20,6 +20,9 @@ axis_to_histaxis = {
     "pt2": hist.axis.Variable(ptbins, name="pt2", label=r"Jet 1 $p_{T}$ [GeV]"),
     "msd1": hist.axis.Regular(23, 40, 201, name="msd1", label="Jet 0 $m_{sd}$ [GeV]"),
     "mass1": hist.axis.Regular(30, 0, 200, name="mass1", label="Jet 0 PNet mass [GeV]"),
+    "partqcd1": hist.axis.Regular(
+        40, 0.0, 1.0, name="partqcd1", label="Jet 0 ParT QCD"
+    ),
     "category": hist.axis.StrCategory([], name="category", label="Category", growth=True),
     "genflavor": hist.axis.IntCategory([0, 1, 2, 3], name="genflavor", label="Gen Flavor"),
 }
@@ -30,6 +33,7 @@ axis_to_column = {
     "pt2": "FatJet1_pt",
     "msd1": "FatJet0_msd",
     "mass1": "FatJet0_pnetMass",
+    "partqcd1": "FatJet0_ParTPQCD",
     "category": "category",
     "genflavor": "GenFlavor",
 }
@@ -52,12 +56,17 @@ def fill_ptbinned_histogram(h, events, axis):
 
         # Event selection
         Txbb = data["FatJet0_pnetTXbb"]
+        Txbbx4q = data["FatJet0_ParTPXbbX4qVsQCD"]
+        TQCD = data["FatJet0_ParTPQCD"]
         msd = data["FatJet0_msd"]
         pt = data["FatJet0_pt"]
         pre_selection = (msd > 40) & (msd < 200) & (pt > 300) & (pt < 1200)
         selection_dict = {
-            "pass": pre_selection & (Txbb > 0.95),
-            "fail": pre_selection & (Txbb < 0.95),
+            #"pass": pre_selection & (Txbb > 0.95),  # ParticleNet Txbb WP
+            #"fail": pre_selection & (Txbb < 0.95),  # ParticleNet Txbb WP
+            "pass": pre_selection & (TQCD < 0.6),  # gloParT QCD, pass == low QCD score == signal-like
+            "fail": pre_selection & (TQCD > 0.6),
+            "inclusive": pre_selection,              # No tagger cut — use for ParT WP scan
         }
 
         # Fill histograms
@@ -85,6 +94,8 @@ def main(args):
         "FatJet0_pt",
         "FatJet0_msd",
         "FatJet0_pnetTXbb",
+        "FatJet0_ParTPXbbX4qVsQCD",
+        "FatJet0_ParTPQCD",
         "GenFlavor",
     ]
     load_columns_data = [
@@ -92,10 +103,13 @@ def main(args):
         "FatJet0_pt",
         "FatJet0_msd",
         "FatJet0_pnetTXbb",
+        "FatJet0_ParTPXbbX4qVsQCD",
+        "FatJet0_ParTPQCD",
     ]
     filters = None
 
     histograms = {}
+    tagger_histograms = {}
     data_dir = Path(path_to_dir) / year
     samples = {
         **common_mc,
@@ -111,6 +125,12 @@ def main(args):
         # Create a new histogram for each process
         h = hist.Hist(
             axis_to_histaxis["msd1"],
+            axis_to_histaxis["pt1"],
+            axis_to_histaxis["category"],
+            axis_to_histaxis["genflavor"],
+        )
+        h_tagger = hist.Hist(
+            axis_to_histaxis["partqcd1"],
             axis_to_histaxis["pt1"],
             axis_to_histaxis["category"],
             axis_to_histaxis["genflavor"],
@@ -136,6 +156,7 @@ def main(args):
 
             # Fill the histogram with the events from this single dataset
             h = fill_ptbinned_histogram(h, events, "msd1")
+            h_tagger = fill_ptbinned_histogram(h_tagger, events, "partqcd1")
 
         # --- ADDED CHECK ---
         # Only add the histogram to our dictionary if it has entries
@@ -146,6 +167,8 @@ def main(args):
             continue
         # Add the fully filled histogram for the process to the dictionary
         histograms[process] = h
+        if h_tagger.sum() > 0:
+            tagger_histograms[process] = h_tagger
 
     output_dir = Path(args.outdir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -155,6 +178,11 @@ def main(args):
         pickle.dump(histograms, f)
 
     print(f"Histograms saved to {output_file}")
+
+    tagger_output_file = output_dir / f"histograms_tagger_{year}_{region}.pkl"
+    with tagger_output_file.open("wb") as f:
+        pickle.dump(tagger_histograms, f)
+    print(f"Tagger histograms saved to {tagger_output_file}")
 
 
 if __name__ == "__main__":

@@ -169,9 +169,9 @@ def hmds_rhalphabet(args):
     allowed_samples = [
         'Zjetsbb', 'Zjetsc', 'Zjetslight',
         'Wjetsbb', 'Wjetsc', 'Wjetslight',
-        'ttbar', 'VV'
+        'ttbar', 'VV', 'HMDS'
     ]
-    signal_samples = ['Zjetsbb']
+    signal_samples = ['HMDS']
 
     # Build qcd MC pass+fail model and fit to polynomial
     tf_params = {}
