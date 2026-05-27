@@ -318,7 +318,14 @@ class categorizer(SkimmerABC):
         selection.add("not2FJ", ak.num(goodfatjets, axis=1) != 2)
 
         # Count SVs within dR < 0.8 of each good FatJet, then sort by nSV desc (tiebreak: pt desc)
-        nSV_per_jet = ak.sum(goodfatjets.metric_table(events.SV, metric=lambda a, b: a.delta_r(b)) < 0.8, axis=2)
+        # Use ak.cartesian to avoid metric_table, which calls delta_r on SecondaryVertexArray
+        # and fails during dask typetracer meta-inference (SV is not a vector.Vector)
+        fj_sv_pairs = ak.cartesian({"fj": goodfatjets, "sv": events.SV}, axis=1, nested=True)
+        deta = fj_sv_pairs["fj"].eta - fj_sv_pairs["sv"].eta
+        dphi = fj_sv_pairs["fj"].phi - fj_sv_pairs["sv"].phi
+        dphi = (dphi + np.pi) % (2 * np.pi) - np.pi
+        dR_fj_sv = np.sqrt(deta**2 + dphi**2)
+        nSV_per_jet = ak.sum(dR_fj_sv < 0.8, axis=2)
         goodfatjets["nSV"] = nSV_per_jet
         sv_sort_key = ak.values_astype(nSV_per_jet, np.float32) * 1e5 + goodfatjets.pt
         svfatjets = goodfatjets[ak.argsort(sv_sort_key, axis=1, ascending=False)]
