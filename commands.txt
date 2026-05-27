@@ -38,10 +38,28 @@ cd ..
 python src/condor/submit.py --tag 4Feb26 --samples TT --git-branch main --run-mode save-skim-nosysts --submit --year 2024 --nano-version v15 #Test
 
 nohup python src/condor/submit_from_yaml.py --tag 4Feb26 --yaml src/submit_configs/hdms_no_tt.yaml --year 2024 --git-branch main --nano-version v15 --run-mode save-skim-nosysts --submit &> tmp/submitout.txt &
+
 python src/condor/check_jobs.py  --location /eos/uscms/store/user/roguljic/lpchmdsrun3/ --tag 4Feb26_v15 --year 2024
 
 
 python src/run.py --sample Signal --starti 0 --endi 1 --year 2024 --nano-version v15_private --save-skim-nosysts #Test before submitting
 
 python src/condor/submit.py --tag 4Feb26  --samples Signal --git-branch main --run-mode save-skim-nosysts --submit --year 2024 --nano-version v15_private --allow-diff-local-repo
-python src/condor/check_jobs.py  --location /eos/uscms/store/user/roguljic/lpchmdsrun3/ --tag 4Feb265_v15_private --year 2024
+
+python src/condor/check_jobs.py  --location /eos/uscms/store/user/roguljic/lpchmdsrun3/ --tag 4Feb26_v15_private --year 2024
+
+
+python src/condor/submit.py --tag 4Feb26 --samples QCD --subsample QCD_HT-2000 --git-branch main --run-mode save-skim-nosysts --submit --year 2024 --nano-version v15 #For some reason QCD2000+ was missing?!
+
+cd python
+python make_histos.py --region signal-all --year 2024
+python plot_histos.py --year 2024 --region signal-all --indir histograms/ --outdir plots/by_process --plot-type process
+python plot_histos.py --year 2024 --region signal-all --indir histograms --outdir plots/tagger --plot-tagger
+
+python make_hists.py --year 2024 --tag 4Feb26_v15
+python make_datacards.py --year 2024 --tag 4Feb26_v15
+cd results/4Feb26_v15/2024/datacards/testModel_2024
+source build.sh
+combine -M FitDiagnostics model_combined.txt --saveWithUncertainties --saveShapes --robustHesse 1 --rMax 10000
+cd -
+python draw_datafit.py --tag 4Feb26_v15 --fit postfit --year 2024

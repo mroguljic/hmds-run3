@@ -41,5 +41,8 @@
         "Zto2Q-4Jets_Bin-HT-800to1500",
         "Zto2Q-4Jets_Bin-HT-1500to2500",
         "Zto2Q-4Jets_Bin-HT-2500"
+    ],
+    "HMDS":[
+        "Signal"
     ]
 }

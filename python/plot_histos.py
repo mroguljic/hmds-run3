@@ -392,7 +392,7 @@ def main(args):
     output_dir = Path(args.outdir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    style_path = Path("style_hbb.yaml")
+    style_path = Path("style_hmds.yaml")
     with style_path.open() as f:
         style = yaml.safe_load(f)
 
