@@ -26,3 +26,5 @@ plots/
 *.ipynb_checkpoints/
 .github/*
 condor/
+scripts/*
+commands*
