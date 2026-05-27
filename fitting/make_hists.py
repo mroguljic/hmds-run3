@@ -30,18 +30,17 @@ def fill_hists(outdict, events, region, reg_cfg, obs_cfg, qq_true, s, j_var=None
 
         bin_br = data[str_bin_br]
         obs_br = data[obs_cfg["branch_name"]]
-
-        Txbb = data["FatJet0_ParTPXbbVsQCD"]
-        Txcc = data["FatJet0_ParTPXccVsQCD"]
-        Txbbxcc = data["FatJet0_ParTPXbbXcc"]
-        Txbbx4q = data["FatJet0_ParTPXbbX4qVsQCD"]
+        TQCD = data["FatJet0_ParTPQCD"]
+        #Txcc = data["FatJet0_ParTPXccVsQCD"]
+        #Txbbxcc = data["FatJet0_ParTPXbbXcc"]
+        #Txbbx4q = data["FatJet0_ParTPXbbX4qVsQCD"]
         genf = data["GenFlavor"]
 
         pre_selection = (obs_br > obs_cfg["min"]) & (obs_br < obs_cfg["max"])
 
         selection_dict = {
-            "fail": pre_selection & (Txbbx4q <= 0.82),
-            "pass": pre_selection & (Txbbx4q  > 0.82)
+            "fail": pre_selection & (TQCD > 0.2),
+            "pass": pre_selection & (TQCD  < 0.2)
         }
 
         cut_bb = (genf == 3)
@@ -91,15 +90,13 @@ def main(args):
 
     path_to_dir = f"/eos/uscms/store/user/roguljic/lpchmdsrun3/{tag}"
     
-    samples_qq = ['Wjets','Zjets','EWKW','EWKZ','EWKV']
+    samples_qq = ['Wjets','Zjets','EWKW','EWKZ','EWKV','Signal']
     
     columns = [
         "weight",
         "FatJet0_pt",
         "FatJet0_msd",
-        "FatJet0_ParTPXbbVsQCD",
-        "FatJet0_ParTPXccVsQCD",
-        "FatJet0_ParTPXbbXcc",
+        "FatJet0_ParTPQCD",
         "VBFPair_mjj",
         "GenFlavor",
     ]
