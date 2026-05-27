@@ -317,13 +317,14 @@ class categorizer(SkimmerABC):
         selection.add("2FJ", ak.num(goodfatjets, axis=1) == 2)
         selection.add("not2FJ", ak.num(goodfatjets, axis=1) != 2)
 
-        if "v12" in self._nano_version:
-            xbbfatjets = goodfatjets[ak.argsort(goodfatjets.pnetXbbXcc, axis=1, ascending=False)]
-        else:
-            xbbfatjets = goodfatjets[ak.argsort(goodfatjets.ParTPXbbXcc, axis=1, ascending=False)]
+        # Count SVs within dR < 0.8 of each good FatJet, then sort by nSV desc (tiebreak: pt desc)
+        nSV_per_jet = ak.sum(goodfatjets.metric_table(events.SV, metric=lambda a, b: a.delta_r(b)) < 0.8, axis=2)
+        goodfatjets["nSV"] = nSV_per_jet
+        sv_sort_key = ak.values_astype(nSV_per_jet, np.float32) * 1e5 + goodfatjets.pt
+        svfatjets = goodfatjets[ak.argsort(sv_sort_key, axis=1, ascending=False)]
 
-        candidatejet = ak.firsts(xbbfatjets[:, 0:1])
-        subleadingjet = ak.firsts(xbbfatjets[:, 1:2])
+        candidatejet = ak.firsts(svfatjets[:, 0:1])
+        subleadingjet = ak.firsts(svfatjets[:, 1:2])
 
         selection.add(
             "minjetkin",
@@ -571,6 +572,7 @@ class categorizer(SkimmerABC):
                 "FatJet0_pt": candidatejet.pt,
                 "FatJet0_phi": candidatejet.phi,
                 "FatJet0_eta": candidatejet.eta,
+                "FatJet0_nSV": candidatejet.nSV,
                 "FatJet0_msd": candidatejet.msd,
                 "FatJet0_msdmatched": msd_matched,
                 "FatJet0_n2b1": candidatejet.n2b1,
@@ -585,6 +587,7 @@ class categorizer(SkimmerABC):
                 "FatJet1_pt": subleadingjet.pt,
                 "FatJet1_phi": subleadingjet.phi,
                 "FatJet1_eta": subleadingjet.eta,
+                "FatJet1_nSV": subleadingjet.nSV,
                 "FatJet1_msd": subleadingjet.msd,
                 "FatJet1_pnetMass": subleadingjet.pnetmass,
                 "FatJet1_pnetTXbb": subleadingjet.particleNet_XbbVsQCD,

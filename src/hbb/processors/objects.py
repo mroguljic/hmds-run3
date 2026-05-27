@@ -191,5 +191,5 @@ def set_ak8jets(fatjets: FatJetArray, year: str, nano_version: str, event_rho):
 
 # ak8 jet definition
 def good_ak8jets(fatjets: FatJetArray):
-    sel = fatjets.jetidtight & (fatjets.pt > 200) & (abs(fatjets.eta) < 2.5)
+    sel = fatjets.jetidtight & (fatjets.pt > 300) & (abs(fatjets.eta) < 2.5)
     return fatjets[sel]
