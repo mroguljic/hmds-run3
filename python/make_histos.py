@@ -20,6 +20,7 @@ axis_to_histaxis = {
     "pt2": hist.axis.Variable(ptbins, name="pt2", label=r"Jet 1 $p_{T}$ [GeV]"),
     "msd1": hist.axis.Regular(23, 40, 201, name="msd1", label="Jet 0 $m_{sd}$ [GeV]"),
     "mass1": hist.axis.Regular(30, 0, 200, name="mass1", label="Jet 0 PNet mass [GeV]"),
+    "nsv1": hist.axis.Regular(16, -0.5, 15.5, name="nsv1", label="Jet 0 nSV"),
     "partqcd1": hist.axis.Regular(
         40, 0.0, 1.0, name="partqcd1", label="Jet 0 ParT QCD"
     ),
@@ -33,6 +34,7 @@ axis_to_column = {
     "pt2": "FatJet1_pt",
     "msd1": "FatJet0_msd",
     "mass1": "FatJet0_pnetMass",
+    "nsv1": "FatJet0_nSV",
     "partqcd1": "FatJet0_ParTPQCD",
     "category": "category",
     "genflavor": "GenFlavor",
@@ -81,6 +83,45 @@ def fill_ptbinned_histogram(h, events, axis):
     return h
 
 
+def fill_tagger_nsv_histogram(h, events):
+    """
+    Fills a 2D ParT QCD vs nSV histogram with events from a single dataset.
+    """
+    for _process_name, data in events.items():
+        weight_val = data["finalWeight"].astype(float)
+        tqcd = data["FatJet0_ParTPQCD"]
+        nsv = data["FatJet0_nSV"]
+
+        isRealData = "GenFlavor" not in data.columns
+        genflavordata = (
+            data["GenFlavor"].astype(int) if not isRealData else np.zeros_like(tqcd, dtype=int)
+        )
+
+        # Event selection
+        Txbb = data["FatJet0_pnetTXbb"]
+        Txbbx4q = data["FatJet0_ParTPXbbX4qVsQCD"]
+        TQCD = data["FatJet0_ParTPQCD"]
+        msd = data["FatJet0_msd"]
+        pt = data["FatJet0_pt"]
+        pre_selection = (msd > 40) & (msd < 200) & (pt > 300) & (pt < 1200)
+        selection_dict = {
+            "pass": pre_selection & (TQCD < 0.6),
+            "fail": pre_selection & (TQCD > 0.6),
+            "inclusive": pre_selection,
+        }
+
+        for category, selection in selection_dict.items():
+            h.fill(
+                tqcd[selection],
+                nsv[selection],
+                pt[selection],
+                category=category,
+                genflavor=genflavordata[selection],
+                weight=weight_val[selection],
+            )
+    return h
+
+
 def main(args):
     year = args.year
     region = args.region
@@ -93,6 +134,7 @@ def main(args):
         "weight",
         "FatJet0_pt",
         "FatJet0_msd",
+        "FatJet0_nSV",
         "FatJet0_pnetTXbb",
         "FatJet0_ParTPXbbX4qVsQCD",
         "FatJet0_ParTPQCD",
@@ -102,6 +144,7 @@ def main(args):
         "weight",
         "FatJet0_pt",
         "FatJet0_msd",
+        "FatJet0_nSV",
         "FatJet0_pnetTXbb",
         "FatJet0_ParTPXbbX4qVsQCD",
         "FatJet0_ParTPQCD",
@@ -109,7 +152,9 @@ def main(args):
     filters = None
 
     histograms = {}
+    histograms_nsv = {}
     tagger_histograms = {}
+    tagger_nsv_histograms = {}
     data_dir = Path(path_to_dir) / year
     samples = {
         **common_mc,
@@ -129,8 +174,21 @@ def main(args):
             axis_to_histaxis["category"],
             axis_to_histaxis["genflavor"],
         )
+        h_nsv = hist.Hist(
+            axis_to_histaxis["nsv1"],
+            axis_to_histaxis["pt1"],
+            axis_to_histaxis["category"],
+            axis_to_histaxis["genflavor"],
+        )
         h_tagger = hist.Hist(
             axis_to_histaxis["partqcd1"],
+            axis_to_histaxis["pt1"],
+            axis_to_histaxis["category"],
+            axis_to_histaxis["genflavor"],
+        )
+        h_tagger_nsv = hist.Hist(
+            axis_to_histaxis["partqcd1"],
+            axis_to_histaxis["nsv1"],
             axis_to_histaxis["pt1"],
             axis_to_histaxis["category"],
             axis_to_histaxis["genflavor"],
@@ -156,7 +214,9 @@ def main(args):
 
             # Fill the histogram with the events from this single dataset
             h = fill_ptbinned_histogram(h, events, "msd1")
+            h_nsv = fill_ptbinned_histogram(h_nsv, events, "nsv1")
             h_tagger = fill_ptbinned_histogram(h_tagger, events, "partqcd1")
+            h_tagger_nsv = fill_tagger_nsv_histogram(h_tagger_nsv, events)
 
         # --- ADDED CHECK ---
         # Only add the histogram to our dictionary if it has entries
@@ -167,8 +227,12 @@ def main(args):
             continue
         # Add the fully filled histogram for the process to the dictionary
         histograms[process] = h
+        if h_nsv.sum() > 0:
+            histograms_nsv[process] = h_nsv
         if h_tagger.sum() > 0:
             tagger_histograms[process] = h_tagger
+        if h_tagger_nsv.sum() > 0:
+            tagger_nsv_histograms[process] = h_tagger_nsv
 
     output_dir = Path(args.outdir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -179,10 +243,20 @@ def main(args):
 
     print(f"Histograms saved to {output_file}")
 
+    nsv_output_file = output_dir / f"histograms_nsv_{year}_{region}.pkl"
+    with nsv_output_file.open("wb") as f:
+        pickle.dump(histograms_nsv, f)
+    print(f"nSV histograms saved to {nsv_output_file}")
+
     tagger_output_file = output_dir / f"histograms_tagger_{year}_{region}.pkl"
     with tagger_output_file.open("wb") as f:
         pickle.dump(tagger_histograms, f)
     print(f"Tagger histograms saved to {tagger_output_file}")
+
+    tagger_nsv_output_file = output_dir / f"histograms_tagger_nsv_{year}_{region}.pkl"
+    with tagger_nsv_output_file.open("wb") as f:
+        pickle.dump(tagger_nsv_histograms, f)
+    print(f"Tagger+nSV histograms saved to {tagger_nsv_output_file}")
 
 
 if __name__ == "__main__":

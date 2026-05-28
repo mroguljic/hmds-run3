@@ -100,6 +100,7 @@ def ratio_plot(
     ratio_with_uncertainty: bool = False,  # Whether to plot ratio/data uncertainty in the ratio
     sort_by_yield: bool = True,  # Whether to sort backgrounds by yield
     legend_title: str | None = None,
+    ylabel: str = "Events / GeV",
 ):
     style = style.copy()
 
@@ -255,7 +256,7 @@ def ratio_plot(
 
     # Axis labels
     ax.set_xlabel(None)
-    ax.set_ylabel("Events / GeV")
+    ax.set_ylabel(ylabel)
     rax.set_xlabel(tot_bkg.axes[0].label)
 
     return fig, (ax, rax)

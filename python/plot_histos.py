@@ -4,7 +4,7 @@ Unified plotting script for the Hbb analysis.
 
 This script serves as a central manager for creating various types of plots
 from the histogram `.pkl` files produced by `make_histos.py`. It can generate
-three main types of plots, selectable via the `--plot-type` argument:
+five main types of plots, selectable via the `--plot-type` argument:
 
 1.  `process`: Standard stacked data vs. Monte Carlo plots, with samples
     grouped by their physics process (e.g., Top, W+jets, Z+jets).
@@ -16,6 +16,10 @@ three main types of plots, selectable via the `--plot-type` argument:
 3.  `qcd_shape`: A diagnostic plot comparing the normalized shapes of the
     QCD MC distribution in the 'pass' and 'fail' regions to validate
     background estimation techniques.
+
+4.  `nsv`: Data/MC comparisons of the `FatJet0_nSV` distribution.
+
+5.  `nsv2d`: Per-process 2D heatmaps of `FatJet0_ParTPQCD` vs. `FatJet0_nSV`.
 
 Example usage:
 # To plot stacked by process for a single year
@@ -36,6 +40,7 @@ from pathlib import Path
 import hist
 import matplotlib.pyplot as plt
 import mplhep as hep
+import numpy as np
 import yaml
 from plotting import ratio_plot
 
@@ -62,8 +67,7 @@ mass_hi = 135  # GeV, upper edge of the mass window to blind
 flavor_map = {3: "b-jet", 2: "c-jet", 1: "light-jet"}
 
 
-def validate_hist_schema(hists, observable_axis):
-    expected_axes = [observable_axis, "pt1", "category", "genflavor"]
+def validate_hist_schema(hists, expected_axes):
     for process, histogram in hists.items():
         axis_names = [axis.name for axis in histogram.axes]
         if axis_names != expected_axes:
@@ -134,6 +138,102 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
         )
         fig.savefig(output_name, dpi=300, bbox_inches="tight")
         plt.close(fig)
+
+
+def plot_nsv_distributions(hists, category, year_str, outdir, region, style):
+    """Plots data/MC comparisons for the nSV observable in each pt bin."""
+    validate_hist_schema(hists, ["nsv1", "pt1", "category", "genflavor"])
+
+    first_hist = next(iter(hists.values()))
+    pt_axis = first_hist.axes["pt1"]
+
+    for i in range(len(pt_axis.edges) - 1):
+        pt_low, pt_high = pt_axis.edges[i], pt_axis.edges[i + 1]
+        i_start = pt_axis.index(pt_low)
+        print(f"  Processing pt bin: {pt_low} - {pt_high}")
+
+        histograms_to_plot = {}
+        for process, h in hists.items():
+            h_proj = h[:, i_start, category, :].project("nsv1")
+            histograms_to_plot[process] = h_proj
+
+        legend_title = f"{category.capitalize()} Region, {pt_low:g} < $p_T$ < {pt_high:g} GeV"
+        fig, (ax, rax) = ratio_plot(
+            histograms_to_plot,
+            sigs=["Signal"],
+            bkgs=["zjets", "wjets", "other", "top"],
+            onto="qcd",
+            style=style,
+            sort_by_yield=True,
+            legend_title=legend_title,
+            ylabel="Events / bin",
+        )
+
+        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
+        hep.cms.label(
+            "Private Work",
+            data=True,
+            ax=ax,
+            lumi=luminosity,
+            lumi_format="{:0.1f}",
+            com=13.6,
+            year=year_str,
+        )
+
+        output_name = f"{outdir}/{year_str}_{region}_{category}_nsv_ptbin{pt_low}_{pt_high}.png"
+        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+
+def plot_parTqcd_vs_nsv(hists, category, year_str, outdir, region):
+    """Plots 2D ParT QCD vs nSV heatmaps for each process in each pt bin."""
+    validate_hist_schema(hists, ["partqcd1", "nsv1", "pt1", "category", "genflavor"])
+
+    first_hist = next(iter(hists.values()))
+    pt_axis = first_hist.axes["pt1"]
+
+    for process, h in hists.items():
+        for i in range(len(pt_axis.edges) - 1):
+            pt_low, pt_high = pt_axis.edges[i], pt_axis.edges[i + 1]
+            i_start = pt_axis.index(pt_low)
+            print(f"  Processing {process}, pt bin: {pt_low} - {pt_high}")
+
+            h_2d = h[:, :, i_start, category, :].project("partqcd1", "nsv1")
+            if h_2d.sum() <= 0:
+                continue
+
+            values = h_2d.values().T
+            xedges = h_2d.axes[0].edges
+            yedges = h_2d.axes[1].edges
+            vmax = np.max(values) if np.any(values > 0) else 1.0
+
+            fig, ax = plt.subplots(figsize=(10, 8))
+            mesh = ax.pcolormesh(xedges, yedges, values, cmap="viridis", vmin=0, vmax=vmax)
+            cbar = fig.colorbar(mesh, ax=ax)
+            cbar.set_label("Events")
+
+            ax.set_xlabel(h_2d.axes[0].label)
+            ax.set_ylabel(h_2d.axes[1].label)
+            ax.set_title(f"{process} | {category.capitalize()} | {pt_low:g} < $p_T$ < {pt_high:g} GeV")
+            ax.grid(False)
+
+            luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
+            hep.cms.label(
+                "Private Work",
+                data=True,
+                ax=ax,
+                lumi=luminosity,
+                lumi_format="{:0.1f}",
+                com=13.6,
+                year=year_str,
+                loc=0,
+            )
+
+            output_name = (
+                f"{outdir}/{year_str}_{region}_{category}_{process}_parTQCD_vs_nSV_ptbin{pt_low}_{pt_high}.png"
+            )
+            fig.savefig(output_name, dpi=300, bbox_inches="tight")
+            plt.close(fig)
 
 
 # --- Function 1: Plotting Stacked by Process ---
@@ -371,9 +471,14 @@ def main(args):
 
     for year in args.year:
         if args.plot_tagger:
-            pkl_path = Path(args.indir) / f"histograms_tagger_{year}_{args.region}.pkl"
+            pkl_name = f"histograms_tagger_{year}_{args.region}.pkl"
+        elif args.plot_type == "nsv":
+            pkl_name = f"histograms_nsv_{year}_{args.region}.pkl"
+        elif args.plot_type == "nsv2d":
+            pkl_name = f"histograms_tagger_nsv_{year}_{args.region}.pkl"
         else:
-            pkl_path = Path(args.indir) / f"histograms_{year}_{args.region}.pkl"
+            pkl_name = f"histograms_{year}_{args.region}.pkl"
+        pkl_path = Path(args.indir) / pkl_name
         if not pkl_path.exists():
             print(f"Error: File not found at {pkl_path}. Skipping.")
             continue
@@ -397,7 +502,7 @@ def main(args):
         style = yaml.safe_load(f)
 
     if args.plot_tagger:
-        validate_hist_schema(histograms, "partqcd1")
+        validate_hist_schema(histograms, ["partqcd1", "pt1", "category", "genflavor"])
         categories = ["inclusive"]
         for category in categories:
             print(
@@ -418,6 +523,16 @@ def main(args):
     elif args.plot_type == "qcd_shape":
         print(f"Plotting QCD pass/fail shapes for year: {year_str}...")
         plot_qcd_shapes(histograms, year_str, args.outdir, args.region, args.norm_type)
+    elif args.plot_type == "nsv":
+        for category in ["pass", "fail"]:
+            print(f"Plotting nSV data/MC for category: {category}, year: {year_str}...")
+            plot_nsv_distributions(histograms, category, year_str, args.outdir, args.region, style)
+    elif args.plot_type == "nsv2d":
+        for category in ["pass", "fail"]:
+            print(
+                f"Plotting 2D ParT QCD vs nSV for category: {category}, year: {year_str}..."
+            )
+            plot_parTqcd_vs_nsv(histograms, category, year_str, args.outdir, args.region)
 
 
 if __name__ == "__main__":
@@ -438,7 +553,7 @@ if __name__ == "__main__":
         help="Type of plot to produce",
         type=str,
         default="process",
-        choices=["process", "flavor", "qcd_shape"],
+        choices=["process", "flavor", "qcd_shape", "nsv", "nsv2d"],
     )
     parser.add_argument(
         "--norm-type",
