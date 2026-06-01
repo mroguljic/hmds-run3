@@ -164,11 +164,20 @@ def load_samples(
             #    )
             except pa.lib.ArrowInvalid as e:
                 warnings.warn(f"ArrowInvalid error: {e}. Skipping dataset {dataset}.", stacklevel=2)
-                print("List of columns attempted to load: ", columns_to_load)
-                print(
-                    "List of files available: ",
-                    list(Path(data_dir / dataset / "parquet").glob(f"{region}*.parquet")),
-                )
+                print("[DEBUG] attempted columns:", columns_to_load)
+
+                parquet_dir = Path(data_dir) / dataset / "parquet" / "nominal" / region
+                files = sorted(parquet_dir.glob("*.parquet"))
+                print(f"[DEBUG] parquet dir: {parquet_dir}")
+                print(f"[DEBUG] n files: {len(files)}")
+
+                if files:
+                    import pyarrow.parquet as pq
+                    schema_cols = pq.read_schema(files[0]).names
+                    missing = sorted(set(columns_to_load) - set(schema_cols))
+                    print(f"[DEBUG] first file: {files[0]}")
+                    print(f"[DEBUG] missing cols: {missing}")
+                    print(f"[DEBUG] all cols: {schema_cols}")
                 continue
             except:
                 print(f"Error loading dataset: {dataset}. Skipping.")

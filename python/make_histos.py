@@ -62,12 +62,15 @@ def fill_ptbinned_histogram(h, events, axis):
         TQCD = data["FatJet0_ParTPQCD"]
         msd = data["FatJet0_msd"]
         pt = data["FatJet0_pt"]
+        nsv = data["FatJet0_nSV"]
         pre_selection = (msd > 40) & (msd < 200) & (pt > 300) & (pt < 1200)
         selection_dict = {
             #"pass": pre_selection & (Txbb > 0.95),  # ParticleNet Txbb WP
             #"fail": pre_selection & (Txbb < 0.95),  # ParticleNet Txbb WP
-            "pass": pre_selection & (TQCD < 0.6),  # gloParT QCD, pass == low QCD score == signal-like
-            "fail": pre_selection & (TQCD > 0.6),
+            "pass": pre_selection & ((TQCD < 0.1) & (nsv > 3)),
+            "fail": pre_selection & ((TQCD > 0.1) & (TQCD < 0.6) & (nsv > 3)),
+            "nsv_pass": pre_selection & ((nsv > 3) & (TQCD < 0.6)),
+            "nsv_fail": pre_selection & ((nsv <= 3) & (TQCD < 0.6)),
             "inclusive": pre_selection,              # No tagger cut — use for ParT WP scan
         }
 
@@ -127,7 +130,7 @@ def main(args):
     region = args.region
 
     MAIN_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
-    dir_name = "4Feb26_v15/"
+    dir_name = "260527_v15/"
     path_to_dir = f"{MAIN_DIR}/{dir_name}/"
 
     load_columns_mc = [

@@ -42,6 +42,7 @@ import matplotlib.pyplot as plt
 import mplhep as hep
 import numpy as np
 import yaml
+from matplotlib.colors import LogNorm
 from plotting import ratio_plot
 
 from hbb.common_vars import LUMI
@@ -68,6 +69,8 @@ flavor_map = {3: "b-jet", 2: "c-jet", 1: "light-jet"}
 
 
 def validate_hist_schema(hists, expected_axes):
+    if isinstance(expected_axes, str):
+        expected_axes = [expected_axes, "pt1", "category", "genflavor"]
     for process, histogram in hists.items():
         axis_names = [axis.name for axis in histogram.axes]
         if axis_names != expected_axes:
@@ -203,18 +206,37 @@ def plot_parTqcd_vs_nsv(hists, category, year_str, outdir, region):
                 continue
 
             values = h_2d.values().T
+            values = values / np.sum(values)
             xedges = h_2d.axes[0].edges
             yedges = h_2d.axes[1].edges
-            vmax = np.max(values) if np.any(values > 0) else 1.0
+
+            positive = values[values > 0]
+            if positive.size == 0:
+                continue
+
+            vmin = max(np.min(positive), 1e-6)
+            vmax = np.max(positive)
+            values_to_plot = np.where(values > 0, values, np.nan)
 
             fig, ax = plt.subplots(figsize=(10, 8))
-            mesh = ax.pcolormesh(xedges, yedges, values, cmap="viridis", vmin=0, vmax=vmax)
+            cmap = plt.cm.viridis.copy()
+            cmap.set_bad("white")
+            mesh = ax.pcolormesh(
+                xedges,
+                yedges,
+                values_to_plot,
+                cmap=cmap,
+                norm=LogNorm(vmin=vmin, vmax=vmax),
+            )
             cbar = fig.colorbar(mesh, ax=ax)
-            cbar.set_label("Events")
+            cbar.set_label("Event fraction (log scale)")
 
             ax.set_xlabel(h_2d.axes[0].label)
             ax.set_ylabel(h_2d.axes[1].label)
-            ax.set_title(f"{process} | {category.capitalize()} | {pt_low:g} < $p_T$ < {pt_high:g} GeV")
+            ax.set_title(
+                f"{process} | {category.capitalize()} | {pt_low:g} < $p_T$ < {pt_high:g} GeV",
+                pad=50,
+            )
             ax.grid(False)
 
             luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
@@ -222,12 +244,14 @@ def plot_parTqcd_vs_nsv(hists, category, year_str, outdir, region):
                 "Private Work",
                 data=True,
                 ax=ax,
-                lumi=luminosity,
-                lumi_format="{:0.1f}",
+                #lumi=luminosity,
+                #lumi_format="{:0.1f}",
                 com=13.6,
                 year=year_str,
                 loc=0,
             )
+
+            fig.subplots_adjust(top=0.80)
 
             output_name = (
                 f"{outdir}/{year_str}_{region}_{category}_{process}_parTQCD_vs_nSV_ptbin{pt_low}_{pt_high}.png"
@@ -513,7 +537,7 @@ def main(args):
 
     # Call the correct plotting function based on --plot-type
     if args.plot_type == "process":
-        for category in ["pass", "fail"]:
+        for category in ["pass", "fail", "nsv_pass", "nsv_fail"]:
             print(f"Plotting histograms by process for category: {category}, year: {year_str}...")
             plot_by_process(histograms, category, year_str, args.outdir, args.region, style)
     elif args.plot_type == "flavor":
@@ -524,14 +548,12 @@ def main(args):
         print(f"Plotting QCD pass/fail shapes for year: {year_str}...")
         plot_qcd_shapes(histograms, year_str, args.outdir, args.region, args.norm_type)
     elif args.plot_type == "nsv":
-        for category in ["pass", "fail"]:
+        for category in ["inclusive"]:
             print(f"Plotting nSV data/MC for category: {category}, year: {year_str}...")
             plot_nsv_distributions(histograms, category, year_str, args.outdir, args.region, style)
     elif args.plot_type == "nsv2d":
-        for category in ["pass", "fail"]:
-            print(
-                f"Plotting 2D ParT QCD vs nSV for category: {category}, year: {year_str}..."
-            )
+        for category in ["inclusive"]:
+            print(f"Plotting ParT QCD vs nSV for category: {category}, year: {year_str}...")
             plot_parTqcd_vs_nsv(histograms, category, year_str, args.outdir, args.region)
 
 

@@ -31,6 +31,7 @@ def fill_hists(outdict, events, region, reg_cfg, obs_cfg, qq_true, s, j_var=None
         bin_br = data[str_bin_br]
         obs_br = data[obs_cfg["branch_name"]]
         TQCD = data["FatJet0_ParTPQCD"]
+        nSV = data["FatJet0_nSV"]
         #Txcc = data["FatJet0_ParTPXccVsQCD"]
         #Txbbxcc = data["FatJet0_ParTPXbbXcc"]
         #Txbbx4q = data["FatJet0_ParTPXbbX4qVsQCD"]
@@ -39,8 +40,8 @@ def fill_hists(outdict, events, region, reg_cfg, obs_cfg, qq_true, s, j_var=None
         pre_selection = (obs_br > obs_cfg["min"]) & (obs_br < obs_cfg["max"])
 
         selection_dict = {
-            "fail": pre_selection & (TQCD > 0.2),
-            "pass": pre_selection & (TQCD  < 0.2)
+            "pass": pre_selection & (TQCD < 0.1) & (nSV > 3),
+            "fail": pre_selection & (TQCD > 0.1) & (TQCD < 0.6) & (nSV > 3),
         }
 
         cut_bb = (genf == 3)
@@ -96,6 +97,7 @@ def main(args):
         "weight",
         "FatJet0_pt",
         "FatJet0_msd",
+        "FatJet0_nSV",
         "FatJet0_ParTPQCD",
         "VBFPair_mjj",
         "GenFlavor",
