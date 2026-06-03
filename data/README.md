@@ -18,7 +18,7 @@ python3 make_filelists.py $VERSION
 
 e.g.
 ```
-python3	make_filelists.py v12
+python3	make_filelists.py v15
 ```
 
 ## Rucio requests
