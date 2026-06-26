@@ -438,13 +438,22 @@ class categorizer(SkimmerABC):
         selection.add("2FJ", ak.num(goodfatjets, axis=1) == 2)
         selection.add("not2FJ", ak.num(goodfatjets, axis=1) != 2)
 
-        if "v12" in self._nano_version:
-            xbbfatjets = goodfatjets[ak.argsort(goodfatjets.pnetXbbXcc, axis=1, ascending=False)]
-        else:
-            xbbfatjets = goodfatjets[ak.argsort(goodfatjets.ParTPXbbXcc, axis=1, ascending=False)]
+        # Count SVs within dR < 0.8 of each good FatJet, then sort by nSV desc (tiebreak: pt desc)
+        # Use ak.cartesian to avoid metric_table, which calls delta_r on SecondaryVertexArray
+        # and fails during dask typetracer meta-inference (SV is not a vector.Vector)
+        fj_sv_pairs = ak.cartesian({"fj": goodfatjets, "sv": events.SV}, axis=1, nested=True)
+        deta = fj_sv_pairs["fj"].eta - fj_sv_pairs["sv"].eta
+        dphi = fj_sv_pairs["fj"].phi - fj_sv_pairs["sv"].phi
+        dphi = (dphi + np.pi) % (2 * np.pi) - np.pi
+        dR_fj_sv = np.sqrt(deta**2 + dphi**2)
+        nSV_per_jet = ak.sum(dR_fj_sv < 0.8, axis=2)
+        goodfatjets["nSV"] = nSV_per_jet
+        sv_sort_key = ak.values_astype(nSV_per_jet, np.float32) * 1e5 + goodfatjets.pt
+        svfatjets = goodfatjets[ak.argsort(sv_sort_key, axis=1, ascending=False)]
 
-        candidatejet = ak.firsts(xbbfatjets[:, 0:1])
-        subleadingjet = ak.firsts(xbbfatjets[:, 1:2])
+        candidatejet = ak.firsts(svfatjets[:, 0:1])
+        subleadingjet = ak.firsts(svfatjets[:, 1:2])
+
 
         selection.add(
             "minjetkin",
@@ -697,69 +706,69 @@ class categorizer(SkimmerABC):
                 "lowmet",
                 "noleptons",
             ],
-            "signal-ggf": [
-                "trigger",
-                "lumimask",
-                "metfilter",
-                "ak4jetveto",
-                "minjetkin",
-                "antiak4btagMediumOppHem",
-                "lowmet",
-                "noleptons",
-                "notvbf",
-                "not2FJ",
-            ],
-            "signal-vh": [
-                "trigger",
-                "lumimask",
-                "metfilter",
-                "ak4jetveto",
-                "minjetkin",
-                "antiak4btagMediumOppHem",
-                "lowmet",
-                "noleptons",
-                "notvbf",
-                "2FJ",
-            ],
-            "signal-vbf": [
-                "trigger",
-                "lumimask",
-                "metfilter",
-                "ak4jetveto",
-                "minjetkin",
-                "antiak4btagMediumOppHem",
-                "lowmet",
-                "noleptons",
-                "isvbf",
-            ],
-            "control-tt": [
-                "muontrigger",
-                "lumimask",
-                "metfilter",
-                "ak4jetveto",
-                "minjetkin",
-                "ak4btagMedium08",
-                "onemuon",
-                "muonkin",
-                "muonDphiAK8",
-            ],
-            "control-zgamma": [
-                "egammatrigger",
-                "lumimask",
-                "metfilter",
-                "minjetkin_zgamma",
-                "atleastonephoton",
-                "antiak4btagMedium",
-            ],
-            "control-zmumu": [
-                "muontrigger",
-                "lumimask",
-                "metfilter",
-                "twoloosemuon",
-                "twomuon_zmm",
-                "muonkin_leadzmm",
-                "muonpairkin_zmm",
-            ],
+            # "signal-ggf": [
+            #     "trigger",
+            #     "lumimask",
+            #     "metfilter",
+            #     "ak4jetveto",
+            #     "minjetkin",
+            #     "antiak4btagMediumOppHem",
+            #     "lowmet",
+            #     "noleptons",
+            #     "notvbf",
+            #     "not2FJ",
+            # ],
+            # "signal-vh": [
+            #     "trigger",
+            #     "lumimask",
+            #     "metfilter",
+            #     "ak4jetveto",
+            #     "minjetkin",
+            #     "antiak4btagMediumOppHem",
+            #     "lowmet",
+            #     "noleptons",
+            #     "notvbf",
+            #     "2FJ",
+            # ],
+            # "signal-vbf": [
+            #     "trigger",
+            #     "lumimask",
+            #     "metfilter",
+            #     "ak4jetveto",
+            #     "minjetkin",
+            #     "antiak4btagMediumOppHem",
+            #     "lowmet",
+            #     "noleptons",
+            #     "isvbf",
+            # ],
+            # "control-tt": [
+            #     "muontrigger",
+            #     "lumimask",
+            #     "metfilter",
+            #     "ak4jetveto",
+            #     "minjetkin",
+            #     "ak4btagMedium08",
+            #     "onemuon",
+            #     "muonkin",
+            #     "muonDphiAK8",
+            # ],
+            # "control-zgamma": [
+            #     "egammatrigger",
+            #     "lumimask",
+            #     "metfilter",
+            #     "minjetkin_zgamma",
+            #     "atleastonephoton",
+            #     "antiak4btagMedium",
+            # ],
+            # "control-zmumu": [
+            #     "muontrigger",
+            #     "lumimask",
+            #     "metfilter",
+            #     "twoloosemuon",
+            #     "twomuon_zmm",
+            #     "muonkin_leadzmm",
+            #     "muonpairkin_zmm",
+            # ],
         }
         if self._evaluate_BDT:
             #replace orthogonality cuts with BDT score
@@ -817,7 +826,9 @@ class categorizer(SkimmerABC):
                 "FatJet0_pt": candidatejet.pt,
                 "FatJet0_phi": candidatejet.phi,
                 "FatJet0_eta": candidatejet.eta,
+                "FatJet0_nSV": candidatejet.nSV,
                 "FatJet0_msd": candidatejet.msd,
+                "FatJet0_mass": candidatejet.mass,
                 "FatJet0_msdmatched": msd_matched,
                 "FatJet0_n2b1": candidatejet.n2b1,
                 "FatJet0_n3b1": candidatejet.n3b1,
@@ -831,6 +842,7 @@ class categorizer(SkimmerABC):
                 "FatJet1_pt": subleadingjet.pt,
                 "FatJet1_phi": subleadingjet.phi,
                 "FatJet1_eta": subleadingjet.eta,
+                "FatJet1_nSV": subleadingjet.nSV,
                 "FatJet1_msd": subleadingjet.msd,
                 "FatJet1_pnetMass": subleadingjet.pnetmass,
                 "FatJet1_pnetTXbb": subleadingjet.particleNet_XbbVsQCD,
@@ -876,6 +888,7 @@ class categorizer(SkimmerABC):
                 "FatJet0_pt": candidatejet.pt,
                 "FatJet0_msd": candidatejet.msd,
                 "FatJet0_msdmatched": msd_matched,
+                "FatJet0_nSV": candidatejet.nSV,
                 "FatJet0_pnetTXbb": candidatejet.particleNet_XbbVsQCD,
                 "FatJet0_pnetTXcc": candidatejet.particleNet_XccVsQCD,
                 "FatJet0_pnetXbbXcc": candidatejet.pnetXbbXcc,
@@ -913,6 +926,7 @@ class categorizer(SkimmerABC):
                     "FatJet0_ParTPXbbVsQCD": candidatejet.ParTPXbbVsQCD,
                     "FatJet0_ParTPXccVsQCD": candidatejet.ParTPXccVsQCD,
                     "FatJet0_ParTPXbbXcc": candidatejet.ParTPXbbXcc,
+                    "FatJet0_ParTPQCD": candidatejet.ParTPQCD,
                 }
                 energy_var_array = {**energy_var_array, **energy_var_array_parT}
 
@@ -1016,95 +1030,17 @@ class categorizer(SkimmerABC):
         if self._save_skim:
             if shift_name == "nominal":
                 for region in regions:
-                    if region == "signal-all":
+                    if isRealData:
                         skim(region, ak.zip({**output_array, **output_array_extra}, depth_limit=1))
                     else:
-                        if isRealData:
-                            if region == "control-zmumu":
-                                skim(region, ak.zip({**output_array, **output_array_zmm}, depth_limit=1))
-                            else:
-                                skim(region, ak.zip(output_array, depth_limit=1))
-                        else:
-                            if "signal" in region:
-                                skim(
-                                    region, ak.zip({**output_array, **weights_dict}, depth_limit=1)
-                                )
-                            elif region == "control-tt":
-                                output_array["weight"] = (
-                                    ak.ones_like(events.run)
-                                    if isRealData
-                                    else weights_dict_mu["weight"]
-                                )
-                                skim(
-                                    region,
-                                    ak.zip({**output_array, **weights_dict_mu}, depth_limit=1),
-                                )
-                            elif region == "control-zgamma":
-                                output_array["weight"] = (
-                                    ak.ones_like(events.run)
-                                    if isRealData
-                                    else weights_dict_gamma["weight"]
-                                )
-                                skim(
-                                    region,
-                                    ak.zip({**output_array, **weights_dict_gamma}, depth_limit=1),
-                                )
-                            elif region == "control-zmumu":
-                                output_array["weight"] = (
-                                    ak.ones_like(events.run)
-                                    if isRealData
-                                    else weights_dict_zmm["weight"]
-                                )
-                                skim(
-                                    region,
-                                    ak.zip({**output_array, **output_array_zmm, **weights_dict_zmm}, depth_limit=1),
-                                )
+                        skim(region, ak.zip({**output_array, **output_array_extra, **weights_dict}, depth_limit=1))
 
-            else:  # energy variation shift case
-                for region in regions:
-                    if region != "signal-all":
-                        if isRealData:
-                            skim(region, ak.zip(energy_var_array, depth_limit=1))
-                        else:
-                            if "signal" in region:
-                                skim(
-                                    region,
-                                    ak.zip({**energy_var_array, **weights_dict}, depth_limit=1),
-                                )
-                            elif region == "control-tt":
-                                output_array["weight"] = (
-                                    ak.ones_like(events.run)
-                                    if isRealData
-                                    else weights_dict_mu["weight"]
-                                )
-                                skim(
-                                    region,
-                                    ak.zip({**energy_var_array, **weights_dict_mu}, depth_limit=1),
-                                )
-                            elif region == "control-zgamma":
-                                output_array["weight"] = (
-                                    ak.ones_like(events.run)
-                                    if isRealData
-                                    else weights_dict_gamma["weight"]
-                                )
-                                skim(
-                                    region,
-                                    ak.zip(
-                                        {**energy_var_array, **weights_dict_gamma}, depth_limit=1
-                                    ),
-                                )
-                            elif region == "control-zmumu":
-                                output_array["weight"] = (
-                                    ak.ones_like(events.run)
-                                    if isRealData
-                                    else weights_dict_zmm["weight"]
-                                )
-                                skim(
-                                    region,
-                                    ak.zip(
-                                        {**energy_var_array, **output_array_zmm, **weights_dict_zmm}, depth_limit=1
-                                    ),
-                                )
+        else:  # energy variation shift case
+            for region in regions:
+                    if isRealData:
+                        skim(region, ak.zip(energy_var_array, depth_limit=1))
+                    else:
+                        skim(region, ak.zip({**energy_var_array, **weights_dict}, depth_limit=1))
 
         toc = time.time()
         output["filltime"] = toc - tic
