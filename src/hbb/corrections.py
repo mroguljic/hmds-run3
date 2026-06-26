@@ -78,7 +78,8 @@ def get_pog_json(obj: str, year: str) -> str:
 
     year = years[year]
 
-    return f"{pog_correction_path}/POG/{pog_json[0]}/{year}/{pog_json[1]}"
+    return_path = f"{pog_correction_path}/POG/{pog_json[0]}/{year}/{pog_json[1]}"
+    return return_path
 
 
 def build_lumimask(filename):
@@ -506,7 +507,7 @@ def add_photon_weights(weights: Weights, year: str, photons, alt_str: str):
         "2022EE" : "2022Re-recoE+PromptFG",
         "2023" : "2023PromptC",
         "2023BPix" : "2023PromptD",
-        "2024" : "2024",
+        "2024" : "2024_ID",
     }
 
     if not year == "2024":
@@ -529,9 +530,11 @@ def add_photon_weights(weights: Weights, year: str, photons, alt_str: str):
 
     return
 
+# HMDS most likely does not need these
+# If they are turned on, need to be tested because correctionlib calls might be outdated
 mupt_variations = {
-    "MuonPTScale" : "ptscalecorr",
-    "MuonPTRes" : "ptcorr_resol"
+    #"MuonPTScale" : "ptscalecorr",
+    #"MuonPTRes" : "ptcorr_resol"
 }
 
 def correct_muons(muons, events, year: str, isRealData: bool):

@@ -195,7 +195,7 @@ if __name__ == "__main__":
         "--year",
         help="year",
         type=str,
-        default="2023",
+        default="2024",
         choices=["2022", "2022EE", "2023", "2023BPix", "2024"],
     )
     parser.add_argument("--starti", default=0, help="start index of files", type=int)
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nano-version",
         type=str,
-        default="v14_private",
+        default="v15",
         choices=["v12", "v12v2_private", "v14_private", "v15"],
         help="NanoAOD version",
     )
