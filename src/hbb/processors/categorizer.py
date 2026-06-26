@@ -1035,8 +1035,8 @@ class categorizer(SkimmerABC):
                     else:
                         skim(region, ak.zip({**output_array, **output_array_extra, **weights_dict}, depth_limit=1))
 
-        else:  # energy variation shift case
-            for region in regions:
+            else:  # energy variation shift case
+                for region in regions:
                     if isRealData:
                         skim(region, ak.zip(energy_var_array, depth_limit=1))
                     else:
