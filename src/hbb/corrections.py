@@ -506,7 +506,7 @@ def add_photon_weights(weights: Weights, year: str, photons, alt_str: str):
         "2022EE" : "2022Re-recoE+PromptFG",
         "2023" : "2023PromptC",
         "2023BPix" : "2023PromptD",
-        "2024" : "2024",
+        "2024" : "2024_ID",
     }
 
     if not year == "2024":
