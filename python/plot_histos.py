@@ -61,8 +61,8 @@ process_grouping = {
 }
 
 
-mass_lo = 115  # GeV, lower edge of the mass window to blind
-mass_hi = 135  # GeV, upper edge of the mass window to blind
+mass_lo = 110  # GeV, lower edge of the mass window to blind
+mass_hi = 130  # GeV, upper edge of the mass window to blind
 
 
 flavor_map = {3: "b-jet", 2: "c-jet", 1: "light-jet"}
@@ -124,12 +124,13 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
             loc="best",
         )
 
+        frac = 10 # Hardcoded for now for presentation
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
         hep.cms.label(
             "Private Work",
             data=True,
             ax=ax,
-            lumi=luminosity,
+            lumi=luminosity / frac,
             lumi_format="{:0.1f}",
             com=13.6,
             year=year_str,
@@ -304,13 +305,13 @@ def plot_by_process(hists, category, year_str, outdir, region, style):
             sort_by_yield=True,
             legend_title=legend_title,
         )
-
+        frac=10.
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
         hep.cms.label(
             "Private Work",
             data=True,
             ax=ax,
-            lumi=luminosity,
+            lumi=luminosity / frac, #Hardcoded for now for presentation
             lumi_format="{:0.1f}",
             com=13.6,
             year=year_str,

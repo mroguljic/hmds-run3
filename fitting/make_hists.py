@@ -88,6 +88,7 @@ def fill_hists(outdict, events, region, reg_cfg, obs_cfg, qq_true, s, j_var=None
 def main(args):
     year = args.year
     tag = args.tag
+    frac = args.frac
 
     path_to_dir = f"/eos/uscms/store/user/roguljic/lpchmdsrun3/{tag}"
     
@@ -193,7 +194,8 @@ def main(args):
                                 columns=columns if "data" in process else columns+c_systs_full,
                                 region=cfg["name"],
                                 filters=filters,
-                                variation=var
+                                variation=var,
+                                frac=frac
                             )
 
                             if not events:
@@ -215,7 +217,8 @@ def main(args):
                                     columns=columns,
                                     region=cfg["name"],
                                     filters=filters,
-                                    variation=var_jerc
+                                    variation=var_jerc,
+                                    frac=frac
                                 )
 
                                 if not events:
@@ -243,6 +246,13 @@ if __name__ == "__main__":
         help="tag",
         type=str,
         required=True
+    )
+    parser.add_argument(
+        "--frac",
+        help="If >1: for data keep every frac-th event; for MC scale weights by frac",
+        type=int,
+        default=1,
+        required=False,
     )
     args = parser.parse_args()
 

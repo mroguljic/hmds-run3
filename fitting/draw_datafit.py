@@ -31,7 +31,8 @@ def draw(args, ptbin: int, region: str, logscale: bool = True):
     pt_ranges = [f"{pt_bins[i]}-{pt_bins[i+1]}" for i in range(len(pt_bins)-1)]
 
     rZbb = 1.0
-    year_string = f"{(LUMI[year] / 1000.0):0.1f}/fb, {year}"
+    frac = 10 # hardcoded for now for presentation
+    year_string = f"{(LUMI[year] / 1000.0 / frac):0.1f}/fb, {year}"
 
     # Only "all" category, pt bins, pass/fail regions
     cat = "all"
@@ -47,7 +48,7 @@ def draw(args, ptbin: int, region: str, logscale: bool = True):
         raise RuntimeError(f"Could not get histogram {name} from data file")
     
     blind_min = data_obs.FindBin(110)
-    blind_max = data_obs.FindBin(140)
+    blind_max = data_obs.FindBin(130)
 
     data_obs.SetLineColor(ROOT.kBlack)
     data_obs.SetMarkerColor(ROOT.kBlack)
@@ -238,7 +239,7 @@ def draw(args, ptbin: int, region: str, logscale: bool = True):
     l1.SetNDC()
     l1.SetTextFont(42)
     l1.SetTextSize(textsize1)
-    l1.DrawLatex(0.2, 0.82, "#bf{CMS} Preliminary")
+    l1.DrawLatex(0.2, 0.82, "#bf{CMS} WiP")
 
     l2 = ROOT.TLatex()
     l2.SetNDC()

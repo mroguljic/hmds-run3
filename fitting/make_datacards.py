@@ -161,6 +161,7 @@ def hmds_rhalphabet(args):
     msd_cfg = setup["observable"]
     msdbins = np.linspace(msd_cfg["min"], msd_cfg["max"], msd_cfg["nbins"]+1)
     msd = rl.Observable(msd_cfg["name"], msdbins)
+    print(f"Using observable {msd_cfg['name']} with bins {msdbins}")
 
     cats = [
         'all'
@@ -178,6 +179,7 @@ def hmds_rhalphabet(args):
     for cat in cats:
 
         ptbins = np.array(cats_cfg[cat]["bins"])
+        print("ptbins for category " + cat + ": ", ptbins)
         npt = len(ptbins) - 1
 
         # bin centers, in pt weighted towards lower end because the spectrum is steeply falling             
@@ -195,7 +197,8 @@ def hmds_rhalphabet(args):
         tf_params[cat] = {}
         fitfailed_qcd = 0
 
-        while fitfailed_qcd < 5:
+        #while fitfailed_qcd < 5:
+        while fitfailed_qcd < 30:
         
             qcdmodel = rl.Model(f'qcdmodel_{cat}')
             qcdpass, qcdfail = 0., 0.
@@ -322,10 +325,10 @@ def hmds_rhalphabet(args):
 
         # Blinded TF Residual
         tf_dataResidual = rl.BasisPoly("tf_dataResidual_"+year+cat,
-                                    (0,0), 
+                                    (2,2), 
                                     ['pt', 'rho'], 
                                     basis='Bernstein',
-                                    init_params=np.array([[1]]),
+                                    init_params=np.array([[1,1,1],[1,1,1],[1,1,1]]),
                                     limits=(0,20), 
                                     coefficient_transform=None)
 

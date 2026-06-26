@@ -12,7 +12,7 @@ from common import common_mc, data_by_year
 from hbb import utils
 
 # Define the possible ptbins
-ptbins = np.array([300, 450, 500, 550, 600, 675, 800, 1200])
+ptbins = np.array([450, 550, 700, 1200])
 
 # Define the histogram axes
 axis_to_histaxis = {
@@ -128,6 +128,7 @@ def fill_tagger_nsv_histogram(h, events):
 def main(args):
     year = args.year
     region = args.region
+    frac = args.frac
 
     MAIN_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
     dir_name = "260527_v15/"
@@ -209,6 +210,7 @@ def main(args):
                 columns=load_columns,
                 region=region,
                 filters=filters,
+                frac=frac
             )
 
             if not events:
@@ -287,6 +289,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--outdir", help="Output directory to save histograms.", type=str, default="histograms"
+    )
+    parser.add_argument(
+        "--frac",
+        help="If >1: for data keep every frac-th event; for MC scale weights by frac",
+        type=int,
+        default=1,
+        required=False,
     )
     args = parser.parse_args()
 

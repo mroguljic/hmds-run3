@@ -1,11 +1,11 @@
 {
     "observable" : {
         "name" : "msd",
-        "min" : 40, 
-        "max" : 201,
-        "nbins" : 23,
+        "min" : 60, 
+        "max" : 200,
+        "nbins" : 20,
         "title" : "m_{sd} [GeV]",
-        "branch_name" : "FatJet0_msdmatched"
+        "branch_name" : "FatJet0_msd"
     },
     "categories" : {
         "all" : {

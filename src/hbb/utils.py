@@ -100,6 +100,7 @@ def load_samples(
     extra_columns: dict[str] = None,
     filters: list[tuple[str, str, str]] = None,
     variation: str = None,
+    frac: int = 1,
 ) -> dict[str, pd.DataFrame]:
     """
     Load samples from a specified directory and return them as a dictionary.
@@ -109,6 +110,7 @@ def load_samples(
     :param region: The region to load the parquets from (e.g., "signal-all")
     :param extra_columns: A dictionary where keys are dataset names and values are lists of additional columns to load for that dataset.
     :param filters: A list of filters to apply when loading the datasets.
+    :param frac: If >1, for data keep every `frac`-th event; for MC scale event weights by `frac`.
     :return: A dictionary with dataset/sample names as keys and DataFrames as values.
     """
     events_dict = {}
@@ -199,6 +201,22 @@ def load_samples(
                 # For data, we just keep the weight as is
                 events["weight_nonorm"] = events["weight"]
                 events["finalWeight"] = events["weight"]
+
+            # Apply fractional loading / weight scaling if requested
+            try:
+                if isinstance(frac, int) and frac > 1:
+                    if "data" in process:
+                        orig_n = len(events)
+                        events = events.iloc[::frac].reset_index(drop=True)
+                        print(f"[DEBUG] Downsampled data {dataset}: kept 1/{frac} ({len(events)}/{orig_n}) entries")
+                    else:
+                        events["weight_nonorm"] = events["weight_nonorm"] / frac
+                        events["finalWeight"] = events["finalWeight"] / frac
+                        print(f"[DEBUG] Scaled MC weights for {dataset} by 1/{frac}")
+                elif frac is not None and (not isinstance(frac, int) or frac < 1):
+                    warnings.warn(f"Invalid frac={frac}. Expected int>=1. Ignoring.")
+            except Exception as e:
+                warnings.warn(f"Error applying frac={frac} to dataset {dataset}: {e}")
 
             # Add the DataFrame to the dictionary with the dataset name as the key
             events_list.append(events)
