@@ -216,7 +216,7 @@ if __name__ == "__main__":
         "--nano-version",
         type=str,
         default="v15",
-        choices=["v12", "v12v2_private", "v14_private", "v15"],
+        choices=["v12", "v12v2_private", "v14_private", "v15", "v15_private"],
         help="NanoAOD version",
     )
     parser.add_argument(

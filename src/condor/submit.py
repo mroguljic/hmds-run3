@@ -55,7 +55,7 @@ def main(args):
     tag = f"{args.tag}_{args.nano_version}"
 
     # make eos dir
-    pdir = Path(f"store/group/lpchbbrun3/{username}/")
+    pdir = Path(f"store/user/{username}/HMDS/")
     outdir = pdir / tag
 
     # make local directory
