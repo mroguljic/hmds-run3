@@ -8,6 +8,7 @@ See https://cms-nanoaod-integration.web.cern.ch/commonJSONSFs/
 from __future__ import annotations
 
 import pathlib
+import sys
 from pathlib import Path
 
 import contextlib
@@ -29,6 +30,49 @@ from hbb.taggers import b_taggers
 
 ak.behavior.update(vector.behavior)
 package_path = str(pathlib.Path(__file__).parent.parent.resolve())
+
+
+def _patched_rand_gauss(item):
+    # Workaround for a coffea bug: CorrectedJetsFactory.rand_gauss indexes
+    # item.to_numpy()[[0, -1]] to derive a JER smearing seed, which raises
+    # IndexError on a chunk with zero total jets (e.g. low-HT QCD/W(qq)
+    # chunks where the raw AK8 FatJet collection, cut at pt>170 in NanoAOD,
+    # is entirely empty). The seed is irrelevant when there are no jets to
+    # smear, so fall back to a fixed seed instead of indexing the empty array.
+    materialized = ak.typetracer.length_one_if_typetracer(item)
+    item_np = materialized.to_numpy()
+    if item_np.shape[0] == 0:
+        seeds = np.zeros(2, dtype="i4")
+    else:
+        seeds = item_np[[0, -1]].view("i4")
+    randomstate = np.random.Generator(np.random.PCG64(seeds))
+
+    def getfunction(layout, depth, **kwargs):
+        if isinstance(layout, ak.contents.NumpyArray) or not isinstance(
+            layout, (ak.contents.Content,)
+        ):
+            return ak.contents.NumpyArray(
+                randomstate.normal(size=len(layout)).astype(np.float32)
+            )
+        return None
+
+    out = ak.transform(
+        getfunction,
+        ak.typetracer.length_zero_if_typetracer(item),
+        behavior=item.behavior,
+    )
+    if ak.backend(item) == "typetracer":
+        out = ak.Array(out.layout.to_typetracer(forget_length=True), behavior=out.behavior)
+
+    assert out is not None
+    return out
+
+
+# coffea.jetmet_tools/__init__.py rebinds the package attribute
+# `coffea.jetmet_tools.CorrectedJetsFactory` to the class of the same name,
+# shadowing the submodule, so we have to reach the real module via sys.modules
+# to patch the module-level rand_gauss() that CorrectedJetsFactory.build() calls.
+sys.modules["coffea.jetmet_tools.CorrectedJetsFactory"].rand_gauss = _patched_rand_gauss
 
 # Important Run3 start of Run
 FirstRun_2022C = 355794

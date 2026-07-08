@@ -77,8 +77,8 @@ def main(args):
             continue
 
         outs_parquet = [
-            int(str(out).split(".")[0].split("_")[-1])
-            for out in Path(f"{eosdir}/{sample}/parquet").glob("*.parquet")
+            int(out.stem.removeprefix("part"))
+            for out in Path(f"{eosdir}/{sample}/parquet").rglob("part*.parquet")
         ]
         # print(f"Out parquets: {outs_parquet}")
 
