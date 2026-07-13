@@ -100,12 +100,18 @@ def ratio_plot(
     ratio_with_uncertainty: bool = False,  # Whether to plot ratio/data uncertainty in the ratio
     sort_by_yield: bool = True,  # Whether to sort backgrounds by yield
     legend_title: str | None = None,
+    ylabel: str = "Events / bin",
 ):
     style = style.copy()
 
     # merge histograms according to the style
     merge = extract_mergemap(style)
     hist_dict = merge_hists(hist_dict, merge)
+
+    # Drop any sig/bkg samples that have no histogram in this channel (e.g. a sample
+    # that hasn't been skimmed/plotted yet) instead of KeyError-ing below.
+    bkgs = [k for k in (bkgs or []) if k in hist_dict]
+    sigs = [k for k in (sigs or []) if k in hist_dict]
 
     # --- NEW SORTING LOGIC ---
     if sort_by_yield and bkgs:
@@ -255,7 +261,7 @@ def ratio_plot(
 
     # Axis labels
     ax.set_xlabel(None)
-    ax.set_ylabel("Events / GeV")
+    ax.set_ylabel(ylabel)
     rax.set_xlabel(tot_bkg.axes[0].label)
 
     return fig, (ax, rax)

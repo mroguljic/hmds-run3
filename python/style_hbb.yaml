@@ -49,22 +49,12 @@ wjets:
   color: '#84a98c'
   hatch: null
 
-hbb:
-  label: $H\rightarrow b\bar{b}$
-  color: '#4E5A7E'
-  hatch: null
-  contains:
-  - ggf-hbb
-  - vh-hbb
-  - vbf-hbb
-
 top:
   label: Top
   color: 'teal'
   hatch: /////
   contains:
   - tt
-  - singletop
 
 other:
   label: $Other$
@@ -73,6 +63,13 @@ other:
   contains:
   - diboson
   - ewkv
+
+Signal:
+  label: HMDS
+  color: 'red'
+  hatch: null
+  contains:
+  - Signal
 
 
 # Z-jets colors (shades of blue-green)
