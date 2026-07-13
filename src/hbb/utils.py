@@ -13,6 +13,7 @@ import awkward as ak
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 from coffea.analysis_tools import PackedSelection
 
 P4 = {
@@ -100,6 +101,7 @@ def load_samples(
     extra_columns: dict[str] = None,
     filters: list[tuple[str, str, str]] = None,
     variation: str = None,
+    prescale: int = 1,
 ) -> dict[str, pd.DataFrame]:
     """
     Load samples from a specified directory and return them as a dictionary.
@@ -109,6 +111,8 @@ def load_samples(
     :param region: The region to load the parquets from (e.g., "signal-all")
     :param extra_columns: A dictionary where keys are dataset names and values are lists of additional columns to load for that dataset.
     :param filters: A list of filters to apply when loading the datasets.
+    :param prescale: If >1, keep only data events with `event % prescale == 0` (a fixed, reproducible
+        subset independent of file/chunk ordering, for blinding). MC is never prescaled.
     :return: A dictionary with dataset/sample names as keys and DataFrames as values.
     """
     events_dict = {}
@@ -147,6 +151,13 @@ def load_samples(
                         stacklevel=2,
                     )
                     continue
+
+                is_data = "data" in process
+                has_event_col = False
+                if is_data and prescale > 1:
+                    has_event_col = "event" in pq.read_schema(file_list[0]).names
+                    if has_event_col and "event" not in columns_to_load:
+                        columns_to_load = [*columns_to_load, "event"]
 
                 events = pd.read_parquet(
                     file_list,
@@ -190,6 +201,31 @@ def load_samples(
                 # For data, we just keep the weight as is
                 events["weight_nonorm"] = events["weight"]
                 events["finalWeight"] = events["weight"]
+
+                if prescale > 1:
+                    orig_n = len(events)
+                    if has_event_col:
+                        events = events[events["event"] % prescale == 0].reset_index(drop=True)
+                        print(
+                            f"[DEBUG] Prescaled data {dataset}: kept 1/{prescale} "
+                            f"({len(events)}/{orig_n}) entries via event % {prescale} == 0"
+                        )
+                    else:
+                        # TEMPORARY fallback: 260710 skims predates the 'event'
+                        # branch being saved, so we can't prescale by event number. Falls back
+                        # to positional row-based prescaling, which is NOT stable across
+                        # reskims/reprocessing - only use until data is reskimmed.
+                        warnings.warn(
+                            f"'event' branch not found in skim for {dataset} - falling back to "
+                            f"positional prescale (iloc[::{prescale}]), which is not reproducible "
+                            "across reskims. Reskim data to get event-number-based prescaling. ",
+                            stacklevel=2,
+                        )
+                        events = events.iloc[::prescale].reset_index(drop=True)
+                        print(
+                            f"[DEBUG] Prescaled data {dataset} (positional fallback): kept "
+                            f"1/{prescale} ({len(events)}/{orig_n}) entries"
+                        )
 
             # Add the DataFrame to the dictionary with the dataset name as the key
             events_list.append(events)

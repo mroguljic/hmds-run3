@@ -193,6 +193,7 @@ def main(args):
                 columns=load_columns,
                 region=region,
                 filters=filters,
+                prescale=args.prescale,
             )
 
             if not events:
@@ -270,6 +271,13 @@ if __name__ == "__main__":
         help="Condor tag holding the Signal skim (v15_private).",
         type=str,
         default="260706_v15_private",
+    )
+    parser.add_argument(
+        "--prescale",
+        help="If >1, blind data to a fixed 1/prescale subset via event %% prescale == 0. "
+        "MC is never prescaled. Requires 'event' to be saved in the skim.",
+        type=int,
+        default=1,
     )
     args = parser.parse_args()
 

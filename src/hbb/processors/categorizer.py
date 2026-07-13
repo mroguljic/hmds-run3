@@ -819,6 +819,7 @@ class categorizer(SkimmerABC):
         if self._save_skim:
 
             output_array = {
+                "event": events.event,
                 "GenBoson_pt": genBosonPt,
                 "GenFlavor": genflavor,
                 "nFatJet": ak.num(goodfatjets, axis=1),
