@@ -274,6 +274,9 @@ xsecs["ZGto2NuG-1Jets_PTG-600"] = 0.001177
 xsecs["ZGto2QG-1Jets_PTG-100to200"] = 1.949
 xsecs["ZGto2QG-1Jets_PTG-200"] = 0.282
 
+# HMDS signal
+xsecs["Signal"] = 1.0
+
 # EWK V
 xsecs["VBFWto2Q"] = 95.3
 xsecs["VBFWtoLNu"] = 41.02
