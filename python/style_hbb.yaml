@@ -62,7 +62,6 @@ other:
   hatch: \\\\\
   contains:
   - diboson
-  - ewkv
 
 Signal:
   label: HMDS

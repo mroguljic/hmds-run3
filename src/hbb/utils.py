@@ -112,7 +112,8 @@ def load_samples(
     :param extra_columns: A dictionary where keys are dataset names and values are lists of additional columns to load for that dataset.
     :param filters: A list of filters to apply when loading the datasets.
     :param prescale: If >1, keep only data events with `event % prescale == 0` (a fixed, reproducible
-        subset independent of file/chunk ordering, for blinding). MC is never prescaled.
+        subset independent of file/chunk ordering, for blinding). MC rows are never dropped, but MC
+        weights are scaled down by 1/prescale to match, so Data/MC stays interpretable while blinded.
     :return: A dictionary with dataset/sample names as keys and DataFrames as values.
     """
     events_dict = {}
@@ -197,6 +198,14 @@ def load_samples(
                 events["weight_nonorm"] = events["weight"]
                 events["finalWeight"] = events["weight"] / sum_genweights
                 events["sum_genWeight"] = sum_genweights
+
+                if prescale > 1:
+                    # MC isn't row-subsampled (that would just add unnecessary statistical
+                    # noise to the prediction) - instead its normalization is scaled down by
+                    # the same factor data was prescaled by, so Data/MC stays interpretable
+                    # while blinded (otherwise Data/MC would trivially sit at ~1/prescale).
+                    events["weight_nonorm"] = events["weight_nonorm"] / prescale
+                    events["finalWeight"] = events["finalWeight"] / prescale
             else:
                 # For data, we just keep the weight as is
                 events["weight_nonorm"] = events["weight"]
