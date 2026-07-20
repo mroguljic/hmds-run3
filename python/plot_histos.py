@@ -21,6 +21,9 @@ five main types of plots, selectable via the `--plot-type` argument:
 
 5.  `nsv2d`: Per-process 2D heatmaps of `FatJet0_ParTPQCD` vs. `FatJet0_nSV`.
 
+6.  `tqcd`: Data/MC comparisons of the `FatJet0_ParTPQCD` (TQCD) distribution, inclusive
+    (no nSV or TQCD selection applied).
+
 Example usage:
 # To plot stacked by process for a single year
 python python/plot_histos.py --year 2022EE --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type process
@@ -34,6 +37,7 @@ python python/plot_histos.py --year 2022EE --region signal-all --indir histogram
 # To scan nSV / ParT QCD working points for signal vs. background
 python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type nsv
 python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type nsv2d
+python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type tqcd
 """
 from __future__ import annotations
 
@@ -62,10 +66,6 @@ process_grouping = {
     "Other": ["diboson"],
     "HMDS": ["Signal"],
 }
-
-
-mass_lo = 115  # GeV, lower edge of the mass window to blind
-mass_hi = 135  # GeV, upper edge of the mass window to blind
 
 
 flavor_map = {3: "b-jet", 2: "c-jet", 1: "light-jet"}
@@ -191,6 +191,51 @@ def plot_nsv_distributions(hists, category, year_str, outdir, region, style):
         plt.close(fig)
 
 
+def plot_tqcd_distributions(hists, category, year_str, outdir, region, style):
+    """Plots data/MC comparisons for the FatJet0_ParTPQCD observable in each pt bin."""
+    validate_hist_schema(hists, "partqcd1")
+
+    first_hist = next(iter(hists.values()))
+    pt_axis = first_hist.axes["pt1"]
+
+    for i in range(len(pt_axis.edges) - 1):
+        pt_low, pt_high = pt_axis.edges[i], pt_axis.edges[i + 1]
+        i_start = pt_axis.index(pt_low)
+        print(f"  Processing pt bin: {pt_low} - {pt_high}")
+
+        histograms_to_plot = {}
+        for process, h in hists.items():
+            h_proj = h[:, i_start, category, :].project("partqcd1")
+            histograms_to_plot[process] = h_proj
+
+        legend_title = f"{category.capitalize()} Region, {pt_low:g} < $p_T$ < {pt_high:g} GeV"
+        fig, (ax, rax) = ratio_plot(
+            histograms_to_plot,
+            sigs=["Signal"],
+            bkgs=["zjets", "wjets", "other", "top"],
+            onto="qcd",
+            style=style,
+            sort_by_yield=True,
+            legend_title=legend_title,
+            ylabel="Events / bin",
+        )
+
+        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
+        hep.cms.label(
+            "Private Work",
+            data=True,
+            ax=ax,
+            lumi=luminosity,
+            lumi_format="{:0.1f}",
+            com=13.6,
+            year=year_str,
+        )
+
+        output_name = f"{outdir}/{year_str}_{region}_{category}_tqcd_ptbin{pt_low}_{pt_high}.png"
+        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+
 def plot_parTqcd_vs_nsv(hists, category, year_str, outdir, region):
     """Plots 2D ParT QCD vs nSV heatmaps for each process in each pt bin."""
     validate_hist_schema(hists, ["partqcd1", "nsv1", "msd1", "pt1", "category", "genflavor"])
@@ -278,15 +323,6 @@ def plot_by_process(hists, category, year_str, outdir, region, style):
         histograms_to_plot = {}
         for process, h in hists.items():
             h_proj = h[:, i_start, category, :].project("msd1")
-
-            if process == "data":
-                # Blind the mass window
-                edges = h_proj.axes[0].edges
-                mask = (edges[:-1] >= mass_lo) & (edges[:-1] < mass_hi)
-                data_val = h_proj.values()
-                data_val[mask] = 0
-                h_proj.values()[:] = data_val
-
             histograms_to_plot[process] = h_proj
 
         # Define the lists of signals and backgrounds using the final group names
@@ -341,12 +377,6 @@ def plot_by_flavor(hists, category, year_str, outdir, region, style):
                     histograms_to_plot[new_key] = h_2d[:, hist.loc(flavor_code)]
             else:
                 h_proj = h[:, i_start, category, :].project("msd1")
-                if process == "data":
-                    edges = h_proj.axes[0].edges
-                    mask = (edges[:-1] >= mass_lo) & (edges[:-1] < mass_hi)
-                    data_val = h_proj.values()
-                    data_val[mask] = 0
-                    h_proj.values()[:] = data_val
                 histograms_to_plot[process] = h_proj
 
         bkg_order = [
@@ -489,6 +519,8 @@ def main(args):
             pkl_name = f"histograms_nsv_{year}_{args.region}.pkl"
         elif args.plot_type == "nsv2d":
             pkl_name = f"histograms_tagger_nsv_{year}_{args.region}.pkl"
+        elif args.plot_type == "tqcd":
+            pkl_name = f"histograms_tagger_{year}_{args.region}.pkl"
         else:
             pkl_name = f"histograms_{year}_{args.region}.pkl"
         pkl_path = Path(args.indir) / pkl_name
@@ -541,6 +573,10 @@ def main(args):
         for category in ["inclusive"]:
             print(f"Plotting ParT QCD vs nSV for category: {category}, year: {year_str}...")
             plot_parTqcd_vs_nsv(histograms, category, year_str, args.outdir, args.region)
+    elif args.plot_type == "tqcd":
+        for category in ["inclusive"]:
+            print(f"Plotting TQCD data/MC for category: {category}, year: {year_str}...")
+            plot_tqcd_distributions(histograms, category, year_str, args.outdir, args.region, style)
 
 
 if __name__ == "__main__":
@@ -561,7 +597,7 @@ if __name__ == "__main__":
         help="Type of plot to produce",
         type=str,
         default="process",
-        choices=["process", "flavor", "qcd_shape", "nsv", "nsv2d"],
+        choices=["process", "flavor", "qcd_shape", "nsv", "nsv2d", "tqcd"],
     )
     parser.add_argument(
         "--norm-type",
