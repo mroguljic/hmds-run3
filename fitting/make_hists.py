@@ -4,6 +4,8 @@ Histogram Maker - Fully Configuration-Driven
 Supports: VBF Hbb Analysis, ZGamma Validation Region
 
 Author(s): Gabi Hamilton, Lara Zygala, Cristina Mantilla
+
+Adapted by Matej Roguljic for Higgs-mediated dark shower search
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ REGION_MAP = {
     "vh": "signal-vh",
     "vbf": "signal-vbf",
     "ggf": "signal-ggf",
+    "sr": "signal-all",
 }
 
 
@@ -98,7 +101,7 @@ def fill_binned_histogram(
         if "zmumu" in actual_reg_name:
             # Only inclusive category for zmumu CR — no Txbb pass/fail
             selection_dict = {"inclusive": pre_selection}
-        else:
+        elif "zgamma" in actual_reg_name:
             Txcc = data["FatJet0_ParTPXccVsQCD"]
             Txbb = data["FatJet0_ParTPXbbVsQCD"]
             Txbbxcc = data["FatJet0_ParTPXbbXcc"]
@@ -107,6 +110,15 @@ def fill_binned_histogram(
                 "pass_cc": pre_selection & (Txbbxcc > working_point) & (Txcc > Txbb),
                 "fail": pre_selection & (Txbbxcc <= working_point),
                 "pass": pre_selection & (Txbbxcc > working_point),
+                "inclusive": pre_selection,
+            }
+        else:
+            # Dark-shower signal region: anti-QCD tagger + nSV working point.
+            TQCD = data["FatJet0_ParTPQCD"]
+            nSV = data["FatJet0_nSV"]
+            selection_dict = {
+                "pass": pre_selection & (TQCD < 0.075) & (nSV > 6),
+                "fail": pre_selection & (TQCD > 0.075) & (TQCD < 0.6) & (nSV > 6),
                 "inclusive": pre_selection,
             }
 
@@ -162,7 +174,16 @@ def main(args):
         setup = json.load(f)
     with Path("pmap_run3.json").open() as f:
         pmap = json.load(f)
-        
+
+    # We are working with private signal atm so it ends up in a different dir
+    MAIN_DATA_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
+    bkg_data_dir = (
+        Path(args.data_dir) if args.data_dir else Path(MAIN_DATA_DIR) / args.tag / args.year
+    )
+    sig_data_dir = (
+        Path(args.data_dir) if args.data_dir else Path(MAIN_DATA_DIR) / args.sig_tag / args.year
+    )
+
     do_BDT_regions = setup.get("do_BDT_regions", False)
 
     for region_key, reg_cfg in setup["categories"].items():
@@ -217,7 +238,8 @@ def main(args):
         axis_var = hist.axis.Regular(obs["nbins"], obs["min"], obs["max"], name=obs["name"])
         axis_bin = hist.axis.Variable(pt_bins, name=bin_prefix)  # Replaced axis_pt
         axis_cat = hist.axis.StrCategory(
-            ["pass_bb", "pass_cc", "fail", "pass", "inclusive"], name="category"
+            ["pass_bb", "pass_cc", "fail", "pass", "inclusive"],
+            name="category",
         )
         axis_flav = hist.axis.IntCategory([0, 1, 2, 3], name="genflavor")
 
@@ -229,6 +251,8 @@ def main(args):
             "FatJet0_ParTPXbbVsQCD",
             "FatJet0_ParTPXccVsQCD",
             "FatJet0_ParTPXbbXcc",
+            "FatJet0_ParTPQCD",
+            "FatJet0_nSV",
             "GenFlavor",
         ]
         if data_map_key == "EGammadata":
@@ -282,14 +306,13 @@ def main(args):
                 h = hist.Hist(axis_var, axis_bin, axis_cat, axis_flav)
                 for dataset in datasets:
                     events = utils.load_samples(
-                        data_dir=Path(args.data_dir) if args.data_dir else Path(
-                            f"/eos/uscms/store/group/lpchbbrun3/skims/{args.tag}/{args.year}"
-                        ),
+                        data_dir=sig_data_dir if process == "Signal" else bkg_data_dir,
                         samples={process: [dataset]},
                         columns=cols,
                         region=region_to_load,
                         variation=variation,
                         filters=pq_filters,
+                        prescale=args.prescale,
                     )
                     if events:
                         # Pass the dynamic branch
@@ -337,15 +360,29 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unified Histogram Maker for Signal and CR")
     parser.add_argument("--year", required=True, choices=["2022", "2022EE", "2023", "2023BPix", "2024"])
-    parser.add_argument("--tag", required=True, help="Tag for the skims directory (e.g., 26Feb03)")
+    parser.add_argument(
+        "--tag", required=True,
+        help="Tag for the skims directory",
+    )
+    parser.add_argument(
+        "--sig-tag", default="260706_v15_private",
+        help="Tag for the signals directory (while we are working with private signals)",
+    )
     parser.add_argument("--setup", required=True, help="Path to setup.json file")
     parser.add_argument("--outdir", default="results", help="Directory to save ROOT files")
     parser.add_argument("--save-root", action="store_true", help="Actually write the ROOT file")
     parser.add_argument(
         "--data-dir", default=None,
-        help="Override the full path to the parquet directory for this year, "
-             "e.g. /eos/uscms/store/group/lpchbbrun3/gmachado/Test_v15/2024 "
-             "Skips the --tag-based path construction.",
+        help="Override the full path to the parquet directory for this year (used for both "
+             "background/data and Signal). Skips the --tag/--sig-tag-based path construction.",
+    )
+    parser.add_argument(
+        "--prescale",
+        type=int,
+        default=10,
+        help="If >1, blind data to a fixed 1/prescale subset via event %% prescale == 0. "
+        "MC is never prescaled. Defaults to 10 (the current blinding policy); pass "
+        "--prescale 1 for a full-lumi, unblinded run.",
     )
 
     args = parser.parse_args()

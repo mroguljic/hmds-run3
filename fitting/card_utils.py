@@ -68,12 +68,11 @@ def get_template(filename, sName, region, ptbin, cat, obs, syst):
     # Construct the exact format: e.g. zgcr_fail_pt1_GJets_nominal
     name = f"{cat}_{reg_clean}"
 
-    # Analysis-specific naming quirks
-    if cat.startswith("ggf"):
-        name += f"_pt{ptbin}_"
-    elif cat.startswith("vbf"):
+    # All categories bin in pt except vbf, which bins in dijet mass (mjj).
+    # HMDS does not use vbf
+    if cat.startswith("vbf"):
         name += f"_mjj{ptbin}_"
-    elif cat.startswith(("vh", "mucr", "zgcr")):
+    else:
         name += f"_pt{ptbin}_"
 
     name += f"{sName}_{syst}"
