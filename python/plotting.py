@@ -182,6 +182,7 @@ def ratio_plot(
             histtype="errorbar",
             label="Data",
             xerr=True,
+            yerr=True,
             color="k",
             zorder=4,
         )
