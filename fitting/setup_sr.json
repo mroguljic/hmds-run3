@@ -1,12 +1,12 @@
 {
-    "root_filename": "fitting_{year}_signal_msd.root",
+    "root_filename": "fitting_{year}_sr_msd.root",
     "qcd_proc": "QCD",
     "pt_min_scale": 450.0,
-    "regions_to_fit": ["bb", "cc"],
-    "do_BDT_regions": true,
+    "regions_to_fit": [""],
+    "do_BDT_regions": false,
     "rho_scaling_max": -2.1,
     "do_systematics": false,
-    "do_muon_CR": true,
+    "do_muon_CR": false,
     "active_systematics": [
         "pileup", "JES", "JER", "UES",
         "btagSFb", "btagSFc", "btagSFlight",
@@ -14,7 +14,7 @@
     ],
 
 
-    "samples_qq": ["Wjets", "Zjets", "EWKW", "EWKZ", "EWKV"],
+    "samples_qq": ["Wjets", "Zjets", "EWKW", "EWKZ"],
 
     "observable": {
         "name": "msd",
@@ -25,23 +25,12 @@
     },
 
 "categories": {
-        "ggf": { "bins": [450, 1200] },
-        "vbf": {
-            "bins": [1000, 13000],
-            "bins_pt": [450, 1200],
-            "bin_branch": "VBFPair_mjj",
-            "bin_prefix": "mjj"
-        },
-        "vh":  { "bins": [450, 1200] },
-        "mucr":  { "bins": [450, 1200] }
+        "sr": { "bins": [450, 550, 700, 1200] }
     },
 
     "process_groups": {
-        "ggF": { "components": [["ggF", ""]], "is_signal": true },
-        "VBF": { "components": [["VBF", ""]], "is_signal": true },
-        "WH":  { "components": [["WH", ""]], "is_signal": true },
-        "ZH":  { "components": [["ZH", ""]], "is_signal": true },
-        "ttH": { "components": [["ttH", ""]], "is_signal": false },
+        "HMDS": { "components": [["Signal", ""]], "is_signal": true },
+
         "ttbar": { "components": [["ttbar", ""]], "is_signal": false },
         "singlet": { "components": [["singlet", ""]], "is_signal": false },
         "VV":    { "components": [["VV", ""]], "is_signal": false },
@@ -60,10 +49,7 @@
     "physics_model": {
         "model": "HiggsAnalysis.CombinedLimit.PhysicsModel:multiSignalModel",
         "maps": [
-            "map=.*/ggF:rggF[1,-20,20]",
-            "map=.*/VBF:rVBF[1,-20,20]",
-            "map=.*/WH:rVH[1,-20,20]",
-            "map=.*/ZH:rVH[1,-20,20]"
+            "map=.*/HMDS:r[1,-20,20]"
         ]
     }
 }
