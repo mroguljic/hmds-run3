@@ -59,10 +59,10 @@ def fill_ptbinned_histogram(h, events, axis):
         nsv = data["FatJet0_nSV"]
         pre_selection = (msd > 40) & (msd < 200) & (pt > 300) & (pt < 1200)
         selection_dict = {
-            "pass": pre_selection & ((TQCD < 0.1) & (nsv > 3)),
-            "fail": pre_selection & ((TQCD > 0.1) & (TQCD < 0.6) & (nsv > 3)),
-            "nsv_pass": pre_selection & ((nsv > 3) & (TQCD < 0.6)),
-            "nsv_fail": pre_selection & ((nsv <= 3) & (TQCD < 0.6)),
+            "pass": pre_selection & ((TQCD < 0.075) & (nsv > 6)),
+            "fail": pre_selection & ((TQCD > 0.075) & (TQCD < 0.6) & (nsv > 6)),
+            "nsv_pass": pre_selection & ((nsv > 6) & (TQCD < 0.6)),
+            "nsv_fail": pre_selection & ((nsv <= 6) & (TQCD < 0.6)),
             "inclusive": pre_selection,  # No tagger/nSV cut — use for WP scans
         }
 
@@ -275,9 +275,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prescale",
         help="If >1, blind data to a fixed 1/prescale subset via event %% prescale == 0. "
-        "MC is never prescaled. Requires 'event' to be saved in the skim.",
+        "MC is never prescaled. Requires 'event' to be saved in the skim. Defaults to 10 "
+        "(the current blinding policy); pass --prescale 1 for a full-lumi, unblinded run.",
         type=int,
-        default=1,
+        default=10,
     )
     args = parser.parse_args()
 
