@@ -1,0 +1,45 @@
+{
+  "2024": {
+    "JetMET": { "subsamples": [
+      JetMET_Run2024C,
+      JetMET_Run2024D,
+      JetMET_Run2024E,
+      JetMET_Run2024F,
+      JetMET_Run2024G,
+      JetMET_Run2024H,
+      JetMET_Run2024I,
+    ], "files_per_job": 20, },
+    "QCD": { "subsamples": [
+      QCD_HT-200to400,
+      QCD_HT-400to600,
+      QCD_HT-600to800,
+      QCD_HT-800to1000,
+      QCD_HT-1000to1200,
+      QCD_HT-1200to1500,
+      QCD_HT-1500to2000,
+    ], "files_per_job": 5, },
+    "TT": { "subsamples": [
+      TTto2L2Nu,
+      TTto4Q,
+      TTtoLNu2Q
+    ],
+    "files_per_job": 8, },
+    "Diboson": { "subsamples": [
+      WW,
+      WZ,
+      ZZ,
+    ], "files_per_job": 20, },
+    "VJets_had_LO": { "subsamples": [
+      Wto2Q-3Jets_Bin-HT-100to400,
+      Wto2Q-3Jets_Bin-HT-400to800,
+      Wto2Q-3Jets_Bin-HT-800to1500,
+      Wto2Q-3Jets_Bin-HT-1500to2500,
+      Wto2Q-3Jets_Bin-HT-2500,
+      Zto2Q-4Jets_Bin-HT-100to400,
+      Zto2Q-4Jets_Bin-HT-400to800,
+      Zto2Q-4Jets_Bin-HT-800to1500,
+      Zto2Q-4Jets_Bin-HT-1500to2500,
+      Zto2Q-4Jets_Bin-HT-2500,
+    ], "files_per_job": 6, },
+  }
+}
