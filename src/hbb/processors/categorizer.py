@@ -249,7 +249,7 @@ class categorizer(SkimmerABC):
         weights.add("genweight", events.genWeight)
 
         if not self._skip_syst:
-            add_pileup_weight(weights, self._year, events.Pileup.nPU)
+            add_pileup_weight(weights, self._year, events.Pileup.nTrueInt)
             add_ps_weight(weights, events.PSWeight)
 
             # Easier to save nominal weights for rest of MC with all of the syst names for grabbing columns in post-processing
