@@ -71,23 +71,27 @@ def get_sum_genweights(data_dir: Path, dataset: str) -> float:
     """
     total_sumw = 0
 
-    try:
-        # Load the genweights from the pickle file
-        for pickle_file in list(Path(data_dir / dataset / "pickles").glob("*.pkl")):
-            with Path(pickle_file).open("rb") as file:
-                out_dict = pickle.load(file)
-            # The sum of weights is stored in the "sumw" key
-            # You can access it like this:
-            for key in out_dict:
-                sumw = next(iter(out_dict[key]["nominal"]["sumw"].values()))
-            total_sumw += sumw
-    except:
-        warnings.warn(
-            f"Error loading genweights for dataset: {dataset}. Skipping.",
-            category=UserWarning,
-            stacklevel=2,
+    # Load the genweights from the pickle files.
+    pickle_files = list(Path(data_dir / dataset / "pickles").glob("*.pkl"))
+    if not pickle_files:
+        raise FileNotFoundError(
+            f"No pickle files found for dataset '{dataset}' in "
+            f"{data_dir / dataset / 'pickles'}; cannot compute sum of genweights."
         )
-        total_sumw = 1
+
+    for pickle_file in pickle_files:
+        with Path(pickle_file).open("rb") as file:
+            out_dict = pickle.load(file)
+        # The sum of weights is stored under out_dict[dataset]["nominal"]["sumw"].
+        for key in out_dict:
+            sumw = next(iter(out_dict[key]["nominal"]["sumw"].values()))
+        total_sumw += sumw
+
+    if total_sumw == 0:
+        raise ValueError(
+            f"Sum of genweights for dataset '{dataset}' is 0; refusing to normalize "
+            "by 0 (or fall back to 1). Check the pickle 'sumw' contents."
+        )
 
     # print(f"Total sum of weights for all pickles for {dataset}: {total_sumw}")
     return total_sumw
