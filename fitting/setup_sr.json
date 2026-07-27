@@ -5,12 +5,11 @@
     "regions_to_fit": [""],
     "do_BDT_regions": false,
     "rho_scaling_max": -2.1,
-    "do_systematics": false,
+    "do_systematics": true,
     "do_muon_CR": false,
     "active_systematics": [
-        "pileup", "JES", "JER", "UES",
-        "btagSFb", "btagSFc", "btagSFlight",
-        "btagSFb_correlated", "btagSFc_correlated", "btagSFlight_correlated"
+        "JES", "JER", "UES",
+        "pileup", "ISRPartonShower", "FSRPartonShower"
     ],
 
 
