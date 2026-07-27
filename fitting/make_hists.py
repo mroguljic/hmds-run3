@@ -43,8 +43,16 @@ def fill_binned_histogram(
 
         # --- 1. WEIGHTING LOGIC ---
         if not is_data and weight_syst != "nominal" and weight_syst in data.columns:
-            # Systematic weights (like btagSF) usually need normalization by sum_genWeight
-            weight_val = data[weight_syst].astype(float) / data["sum_genWeight"].astype(float)
+            # Weight-based systematic (pileup, ISR/FSR, ...): scale the nominal
+            # finalWeight by the per-event variation ratio (syst weight / nominal
+            # weight). Both columns are xsec-normalized, so the ratio is the pure
+            # per-event shift; multiplying finalWeight by it cancels sum_genweights
+            # and preserves the 1/prescale blinding factor that finalWeight already
+            # carries (dividing the raw syst column by sum_genWeight would drop it).
+            nom_w = data["weight"].astype(float)
+            syst_w = data[weight_syst].astype(float)
+            ratio = (syst_w / nom_w).where(nom_w != 0, other=1.0)
+            weight_val = data["finalWeight"].astype(float) * ratio
         else:
             # load_samples already calculated finalWeight (weight / sum_genWeight)
             weight_val = data["finalWeight"].astype(float)
@@ -296,6 +304,13 @@ def main(args):
             is_folder = any(fs in syst for fs in folder_systs)
             variation = syst if is_folder else "nominal"
 
+            # Weight-based systematics are extra columns in the nominal parquet
+            # (e.g. pileupUp, ISRPartonShowerDown). Load that column for this pass so
+            # the fill can actually read it — otherwise it silently falls back to the
+            # nominal weight and the systematic collapses to a null 1.0000 effect.
+            weight_syst_col = syst if (not is_folder and syst != "nominal") else None
+            load_cols = [*cols, weight_syst_col] if weight_syst_col else cols
+
             histograms = {}
             for process, datasets in pmap.items():
                 if "data" in process.lower() and process != data_map_key:
@@ -308,7 +323,7 @@ def main(args):
                     events = utils.load_samples(
                         data_dir=sig_data_dir if process == "Signal" else bkg_data_dir,
                         samples={process: [dataset]},
-                        columns=cols,
+                        columns=load_cols,
                         region=region_to_load,
                         variation=variation,
                         filters=pq_filters,

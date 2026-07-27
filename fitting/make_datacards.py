@@ -112,6 +112,8 @@ def rhalphabet(args):
             "JES": rl.NuisanceParameter(f"CMS_scale_j_{year}", "lnN"),
             "JER": rl.NuisanceParameter(f"CMS_res_j_{year}", "lnN"),
             "UES": rl.NuisanceParameter(f"CMS_ues_j_{year}", "lnN"),
+            "ISRPartonShower": rl.NuisanceParameter("ISRPartonShower", "lnN"),
+            "FSRPartonShower": rl.NuisanceParameter("FSRPartonShower", "lnN"),
             "MuonPTScale": rl.NuisanceParameter(f"CMS_scale_m_{year}", "lnN"),
             "MuonPTRes": rl.NuisanceParameter(f"CMS_res_m_{year}", "lnN"),
             "btagSFb": rl.NuisanceParameter(f"CMS_btagSFb_{year}", "lnN"),
