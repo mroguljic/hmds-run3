@@ -35,15 +35,15 @@ class SkimmerABC(processor.ProcessorABC):
         This still needs to be normalized with the acceptance of the pre-selection in post-processing.
         (Done in postprocessing/utils.py:load_samples())
         """
-        if dataset in self.XSECS:
-            xsec = self.XSECS[dataset]
-            weight_norm = xsec * LUMI[year]
-            logging.info(f"XSEC: {xsec}, LUMI: {LUMI[year]}")
-        else:
-            logging.warning(f"Dataset name: {dataset} not found in xsecs.py")
-            logging.warning("Weight not normalized to cross section")
-            weight_norm = 1
+        if dataset not in self.XSECS:
+            # A missing xsec silently normalizing by 1 is never what we want
+            raise KeyError(
+                f"Dataset '{dataset}' not found in XSECS (hbb/xsecs.py); Add its cross section before skimming."
+            )
 
+        xsec = self.XSECS[dataset]
+        weight_norm = xsec * LUMI[year]
+        logging.info(f"XSEC: {xsec}, LUMI: {LUMI[year]}")
         print("weight_norm", weight_norm)
 
         return weight_norm
