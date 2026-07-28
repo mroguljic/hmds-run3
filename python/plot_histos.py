@@ -129,7 +129,7 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
 
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
         hep.cms.label(
-            "Private Work",
+            "WiP",
             data=True,
             ax=ax,
             lumi=luminosity,
@@ -177,7 +177,7 @@ def plot_nsv_distributions(hists, category, year_str, outdir, region, style):
 
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
         hep.cms.label(
-            "Private Work",
+            "WiP",
             data=True,
             ax=ax,
             lumi=luminosity,
@@ -222,7 +222,7 @@ def plot_tqcd_distributions(hists, category, year_str, outdir, region, style):
 
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
         hep.cms.label(
-            "Private Work",
+            "WiP",
             data=True,
             ax=ax,
             lumi=luminosity,
@@ -288,7 +288,7 @@ def plot_parTqcd_vs_nsv(hists, category, year_str, outdir, region):
             ax.grid(False)
 
             hep.cms.label(
-                "Private Work",
+                "WiP",
                 data=True,
                 ax=ax,
                 com=13.6,
@@ -342,7 +342,7 @@ def plot_by_process(hists, category, year_str, outdir, region, style):
         )
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
         hep.cms.label(
-            "Private Work",
+            "WiP",
             data=True,
             ax=ax,
             lumi=luminosity,
@@ -403,7 +403,7 @@ def plot_by_flavor(hists, category, year_str, outdir, region, style):
 
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
         hep.cms.label(
-            "Private Work",
+            "WiP",
             data=True,
             ax=ax,
             lumi=luminosity,
@@ -492,7 +492,7 @@ def plot_qcd_shapes(hists, year_str, outdir, region, norm_type):
         ax.set_ylabel(ylabel)
         ax.grid(True)
 
-        hep.cms.label("Private Work", data=False, ax=ax, com=13.6, year=year_str)
+        hep.cms.label("WiP", data=False, ax=ax, com=13.6, year=year_str)
 
         ax.legend(
             title=f"{pt_low:g} < $p_T$ < {pt_high:g} GeV",

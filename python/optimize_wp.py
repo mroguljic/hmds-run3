@@ -189,7 +189,7 @@ def plot_wp_mass_spectrum(hists, point, mass_lo, mass_hi, style, year, region, o
     )
     luminosity = LUMI[year] / 1000.0
     hep.cms.label(
-        "Private Work",
+        "WiP",
         data=True,
         ax=ax,
         lumi=luminosity,

@@ -106,6 +106,7 @@ def load_samples(
     filters: list[tuple[str, str, str]] = None,
     variation: str = None,
     prescale: int = 1,
+    file_batch: tuple[int, int] = None,
 ) -> dict[str, pd.DataFrame]:
     """
     Load samples from a specified directory and return them as a dictionary.
@@ -118,6 +119,11 @@ def load_samples(
     :param prescale: If >1, keep only data events with `event % prescale == 0` (a fixed, reproducible
         subset independent of file/chunk ordering, for blinding). MC rows are never dropped, but MC
         weights are scaled down by 1/prescale to match, so Data/MC stays interpretable while blinded.
+    :param file_batch: Optional (i_batch, n_batches). Loads only every n_batches-th parquet file,
+        starting at i_batch, instead of the whole dataset. Callers that fill histograms can loop
+        over batches to keep peak memory at ~1/n_batches of the full dataset - the big QCD samples
+        are tens of millions of rows and don't fit in RAM in one piece on a shared node.
+        Weights/prescaling are per-row, so batching does not change the summed result.
     :return: A dictionary with dataset/sample names as keys and DataFrames as values.
     """
     events_dict = {}
@@ -156,6 +162,14 @@ def load_samples(
                         stacklevel=2,
                     )
                     continue
+
+                if file_batch is not None:
+                    i_batch, n_batches = file_batch
+                    # Sort first so the batch split is deterministic (iterdir order is not).
+                    file_list = sorted(file_list)[i_batch::n_batches]
+                    if not file_list:
+                        # Fewer files than batches - this batch is legitimately empty.
+                        continue
 
                 is_data = "data" in process
                 has_event_col = False

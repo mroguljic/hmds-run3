@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import gc
+import json
 import pickle
 from pathlib import Path
 
@@ -11,14 +13,35 @@ from common import common_mc, data_by_year
 
 from hbb import utils
 
-# Define the possible ptbins
-ptbins = np.array([300, 450, 500, 550, 600, 675, 800, 1200])
+# pT binning and the msd observable definition are taken from the fitting setup so that
+# plots and fit templates always use the same pT split and the same msd range/binning
+# (fitting/setup_sr.json -> categories.sr.bins and observable).
+FIT_SETUP = Path(__file__).resolve().parents[1] / "fitting" / "setup_sr.json"
+
+
+def load_fit_setup(setup_path=FIT_SETUP, category="sr"):
+    """Read the pT bin edges and msd observable definition used by the fit."""
+    with Path(setup_path).open() as f:
+        setup = json.load(f)
+    cat_cfg = setup["categories"][category]
+    ptbins = np.array(cat_cfg.get("bins_pt", cat_cfg["bins"]), dtype=float)
+    return ptbins, setup["observable"]
+
+
+ptbins, fit_observable = load_fit_setup()
+# Lower edge doubles as the pre-selection pT cut (matches fitting's "pt_min_scale").
+PT_MIN, PT_MAX = float(ptbins[0]), float(ptbins[-1])
+# msd window/binning; these bounds are also the pre-selection msd cut, as in fitting.
+MSD_MIN, MSD_MAX = float(fit_observable["min"]), float(fit_observable["max"])
+MSD_NBINS = int(fit_observable["nbins"])
 
 # Define the histogram axes
 axis_to_histaxis = {
     "pt1": hist.axis.Variable(ptbins, name="pt1", label=r"Jet 0 $p_{T}$ [GeV]"),
     "pt2": hist.axis.Variable(ptbins, name="pt2", label=r"Jet 1 $p_{T}$ [GeV]"),
-    "msd1": hist.axis.Regular(23, 40, 201, name="msd1", label="Jet 0 $m_{sd}$ [GeV]"),
+    "msd1": hist.axis.Regular(
+        MSD_NBINS, MSD_MIN, MSD_MAX, name="msd1", label="Jet 0 $m_{sd}$ [GeV]"
+    ),
     "mass1": hist.axis.Regular(30, 0, 200, name="mass1", label="Jet 0 PNet mass [GeV]"),
     "nsv1": hist.axis.Regular(16, -0.5, 15.5, name="nsv1", label="Jet 0 nSV"),
     "partqcd1": hist.axis.Regular(40, 0.0, 1.0, name="partqcd1", label="Jet 0 ParT QCD"),
@@ -57,7 +80,7 @@ def fill_ptbinned_histogram(h, events, axis):
         msd = data["FatJet0_msd"]
         pt = data["FatJet0_pt"]
         nsv = data["FatJet0_nSV"]
-        pre_selection = (msd > 40) & (msd < 200) & (pt > 300) & (pt < 1200)
+        pre_selection = (msd > MSD_MIN) & (msd < MSD_MAX) & (pt > PT_MIN) & (pt < PT_MAX)
         selection_dict = {
             "pass": pre_selection & ((TQCD < 0.075) & (nsv > 6)),
             "fail": pre_selection & ((TQCD > 0.075) & (TQCD < 0.6) & (nsv > 6)),
@@ -95,7 +118,7 @@ def fill_tagger_nsv_histogram(h, events):
         # Event selection
         msd = data["FatJet0_msd"]
         pt = data["FatJet0_pt"]
-        pre_selection = (msd > 40) & (msd < 200) & (pt > 300) & (pt < 1200)
+        pre_selection = (msd > MSD_MIN) & (msd < MSD_MAX) & (pt > PT_MIN) & (pt < PT_MAX)
         selection_dict = {
             "pass": pre_selection & (tqcd < 0.6),
             "fail": pre_selection & (tqcd > 0.6),
@@ -130,7 +153,6 @@ def main(args):
         "FatJet0_pt",
         "FatJet0_msd",
         "FatJet0_nSV",
-        "FatJet0_pnetTXbb",
         "FatJet0_ParTPQCD",
         "GenFlavor",
     ]
@@ -139,10 +161,17 @@ def main(args):
         "FatJet0_pt",
         "FatJet0_msd",
         "FatJet0_nSV",
-        "FatJet0_pnetTXbb",
         "FatJet0_ParTPQCD",
     ]
-    filters = None
+    # PyArrow row filters applied at read time (predicate pushdown), same idea as in
+    # fitting/make_hists.py: rows failing these are never loaded into RAM, which matters
+    # for the high-HT QCD samples (O(10M) rows each). Kept slightly looser than the
+    # analysis pre-selection so no events are lost at the bin edges.
+    filters = [
+        ("FatJet0_msd", ">=", MSD_MIN),
+        ("FatJet0_msd", "<=", MSD_MAX),
+        ("FatJet0_pt", ">=", PT_MIN),
+    ]
 
     histograms = {}
     histograms_nsv = {}
@@ -187,23 +216,38 @@ def main(args):
 
         # Loop through each dataset within the process
         for dataset in datasets:
-            events = utils.load_samples(
-                data_dir,
-                {process: [dataset]},  # Pass a list with a single dataset
-                columns=load_columns,
-                region=region,
-                filters=filters,
-                prescale=args.prescale,
-            )
+            # Read each dataset in batches of parquet files rather than all at once: the
+            # high-HT QCD samples are tens of millions of rows and loading one in a single
+            # frame gets OOM-killed on a shared node. Histogram fills are additive, so the
+            # summed result is identical.
+            n_filled = 0
+            for i_batch in range(args.file_batches):
+                events = utils.load_samples(
+                    data_dir,
+                    {process: [dataset]},  # Pass a list with a single dataset
+                    columns=load_columns,
+                    region=region,
+                    filters=filters,
+                    prescale=args.prescale,
+                    file_batch=(i_batch, args.file_batches),
+                )
 
-            if not events:
+                if not events:
+                    continue
+
+                h = fill_ptbinned_histogram(h, events, "msd1")
+                h_nsv = fill_ptbinned_histogram(h_nsv, events, "nsv1")
+                h_tagger = fill_ptbinned_histogram(h_tagger, events, "partqcd1")
+                h_tagger_nsv = fill_tagger_nsv_histogram(h_tagger_nsv, events)
+                n_filled += 1
+
+                # Free the batch before reading the next one, otherwise peak RSS is the
+                # sum of two batches instead of one.
+                del events
+                gc.collect()
+
+            if n_filled == 0:
                 print(f"No events found for dataset {dataset} in year {year}. Skipping.")
-                continue
-
-            h = fill_ptbinned_histogram(h, events, "msd1")
-            h_nsv = fill_ptbinned_histogram(h_nsv, events, "nsv1")
-            h_tagger = fill_ptbinned_histogram(h_tagger, events, "partqcd1")
-            h_tagger_nsv = fill_tagger_nsv_histogram(h_tagger_nsv, events)
 
         if h.sum() == 0:
             print(
@@ -264,13 +308,21 @@ if __name__ == "__main__":
         "--bkg-tag",
         help="Condor tag (under /eos/uscms/store/user/roguljic/lpchmdsrun3/) holding background/data skims (v15).",
         type=str,
-        default="260706_v15",
+        default="20260721_v15",
     )
     parser.add_argument(
         "--sig-tag",
         help="Condor tag holding the Signal skim (v15_private).",
         type=str,
-        default="260706_v15_private",
+        default="20260721_private_v15_private",
+    )
+    parser.add_argument(
+        "--file-batches",
+        help="Number of parquet-file batches each dataset is read in. Higher values lower peak "
+        "memory (roughly 1/N of the dataset in RAM at a time) at the cost of more read passes. "
+        "Results are identical regardless of this value.",
+        type=int,
+        default=8,
     )
     parser.add_argument(
         "--prescale",
