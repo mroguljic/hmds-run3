@@ -697,8 +697,6 @@ def rhalphabet(args):
         if "/" in ch.name:
             continue
         out_cards += f"{ch.name}={ch.name}.txt "
-        with Path(f"{modeldir}/{ch.name}.txt").open("a") as f:
-            f.write("\nqcd_norm rateParam * qcd 1.0 [0,20]\n")
     if do_muon_CR:
         for ch in muonCR_model:
             if "/" in ch.name:
