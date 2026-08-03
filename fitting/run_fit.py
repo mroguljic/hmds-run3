@@ -5,9 +5,10 @@ A model order is four ints: (mc_pt, mc_rho, res_pt, res_rho).
 
 Stages:
   datacard  make_datacards + build.sh, copy workspace.root -> workspace_<order>.root
-  fitdiag   FitDiagnostics (postfit shapes + residual params), robustFit+robustHesse
+  fitdiag   FitDiagnostics (postfit shapes + residual params), 
+            options are hardcoded for now, e.g. --cminDefaultMinimizerStrategy 0
   postfit   plot_fit.py (transfer-factor panels + prefit/postfit stacks)
-  gof       saturated Goodness-of-Fit: snapshot -> observed -> N toys -> plot
+  gof       Goodness-of-Fit: interactively runs on data, toys, plots
   limit     AsymptoticLimits (blinded/expected by default) + parsed printout
 
 F-test is separately used to provide the best order:

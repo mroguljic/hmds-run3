@@ -50,8 +50,10 @@ def build_ws(o, cfg):
 
 
 def param_count(o_null, o_alt):
+    # The MC-TF orders differ so we count the MC params
     if o_null[:2] != o_alt[:2]:
         return (o_null[0] + 1) * (o_null[1] + 1), (o_alt[0] + 1) * (o_alt[1] + 1)
+    # The MC-TF orders match so we count the residual correction params
     return (o_null[2] + 1) * (o_null[3] + 1), (o_alt[2] + 1) * (o_alt[3] + 1)
 
 
