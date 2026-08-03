@@ -73,6 +73,7 @@ def rhalphabet(args):
     qcd_tf_proc = config.get("qcd_proc", "QCD")
     pt_min_scale = config.get("pt_min_scale", 450.0)
     regions_to_fit = config.get("regions_to_fit", ["bb"])
+    rho_scaling_min = config.get("rho_scaling_min", -6.0)
     rho_scaling_max = config.get("rho_scaling_max", -2.1)
 
     # Process Definitions
@@ -178,7 +179,7 @@ def rhalphabet(args):
         )
         rhopts = 2 * np.log(msdpts / ptpts)
         ptscaled = (ptpts - pt_min_scale) / (1200.0 - pt_min_scale)
-        rhoscaled = (rhopts - (-6.0)) / (rho_scaling_max - (-6.0))
+        rhoscaled = (rhopts - rho_scaling_min) / (rho_scaling_max - rho_scaling_min)
 
         validbins[cat] = (rhoscaled >= 0.0) & (rhoscaled <= 1.0)
         rhoscaled[~validbins[cat]] = 1
@@ -311,6 +312,7 @@ def rhalphabet(args):
                 tag,
                 str(working_dir),
                 pt_min=pt_min_scale,  # <--- Pass from config
+                rho_min=rho_scaling_min,  # <--- Pass from config
                 rho_max=rho_scaling_max,  # <--- Pass from config (-1.0 for ZG)
             )
 

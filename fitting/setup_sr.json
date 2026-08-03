@@ -4,6 +4,7 @@
     "pt_min_scale": 450.0,
     "regions_to_fit": [""],
     "do_BDT_regions": false,
+    "rho_scaling_min": -6.0,
     "rho_scaling_max": -2.1,
     "do_systematics": true,
     "do_muon_CR": false,
