@@ -45,6 +45,9 @@ axis_to_histaxis = {
     "mass1": hist.axis.Regular(30, 0, 200, name="mass1", label="Jet 0 PNet mass [GeV]"),
     "nsv1": hist.axis.Regular(16, -0.5, 15.5, name="nsv1", label="Jet 0 nSV"),
     "partqcd1": hist.axis.Regular(40, 0.0, 1.0, name="partqcd1", label="Jet 0 ParT QCD"),
+    "pnettxbb1": hist.axis.Regular(
+        40, 0.0, 1.0, name="pnettxbb1", label="Jet 0 PNet Xbb (vs QCD)"
+    ),
     "category": hist.axis.StrCategory([], name="category", label="Category", growth=True),
     "genflavor": hist.axis.IntCategory([0, 1, 2, 3], name="genflavor", label="Gen Flavor"),
 }
@@ -57,6 +60,7 @@ axis_to_column = {
     "mass1": "FatJet0_pnetMass",
     "nsv1": "FatJet0_nSV",
     "partqcd1": "FatJet0_ParTPQCD",
+    "pnettxbb1": "FatJet0_pnetTXbb",
     "category": "category",
     "genflavor": "GenFlavor",
 }
@@ -154,6 +158,7 @@ def main(args):
         "FatJet0_msd",
         "FatJet0_nSV",
         "FatJet0_ParTPQCD",
+        "FatJet0_pnetTXbb",
         "GenFlavor",
     ]
     load_columns_data = [
@@ -162,6 +167,7 @@ def main(args):
         "FatJet0_msd",
         "FatJet0_nSV",
         "FatJet0_ParTPQCD",
+        "FatJet0_pnetTXbb",
     ]
     # PyArrow row filters applied at read time (predicate pushdown), same idea as in
     # fitting/make_hists.py: rows failing these are never loaded into RAM, which matters
@@ -177,6 +183,7 @@ def main(args):
     histograms_nsv = {}
     tagger_histograms = {}
     tagger_nsv_histograms = {}
+    pnettxbb_histograms = {}
     samples = {
         **common_mc,
         "data": data_by_year[year],
@@ -201,6 +208,12 @@ def main(args):
         )
         h_tagger = hist.Hist(
             axis_to_histaxis["partqcd1"],
+            axis_to_histaxis["pt1"],
+            axis_to_histaxis["category"],
+            axis_to_histaxis["genflavor"],
+        )
+        h_pnettxbb = hist.Hist(
+            axis_to_histaxis["pnettxbb1"],
             axis_to_histaxis["pt1"],
             axis_to_histaxis["category"],
             axis_to_histaxis["genflavor"],
@@ -238,6 +251,7 @@ def main(args):
                 h = fill_ptbinned_histogram(h, events, "msd1")
                 h_nsv = fill_ptbinned_histogram(h_nsv, events, "nsv1")
                 h_tagger = fill_ptbinned_histogram(h_tagger, events, "partqcd1")
+                h_pnettxbb = fill_ptbinned_histogram(h_pnettxbb, events, "pnettxbb1")
                 h_tagger_nsv = fill_tagger_nsv_histogram(h_tagger_nsv, events)
                 n_filled += 1
 
@@ -259,6 +273,8 @@ def main(args):
             histograms_nsv[process] = h_nsv
         if h_tagger.sum() > 0:
             tagger_histograms[process] = h_tagger
+        if h_pnettxbb.sum() > 0:
+            pnettxbb_histograms[process] = h_pnettxbb
         if h_tagger_nsv.sum() > 0:
             tagger_nsv_histograms[process] = h_tagger_nsv
 
@@ -269,6 +285,7 @@ def main(args):
         f"histograms_{year}_{region}.pkl": histograms,
         f"histograms_nsv_{year}_{region}.pkl": histograms_nsv,
         f"histograms_tagger_{year}_{region}.pkl": tagger_histograms,
+        f"histograms_pnettxbb_{year}_{region}.pkl": pnettxbb_histograms,
         f"histograms_tagger_nsv_{year}_{region}.pkl": tagger_nsv_histograms,
     }
     for name, hists in outputs.items():

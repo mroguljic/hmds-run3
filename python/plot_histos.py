@@ -24,6 +24,12 @@ five main types of plots, selectable via the `--plot-type` argument:
 6.  `tqcd`: Data/MC comparisons of the `FatJet0_ParTPQCD` (TQCD) distribution, inclusive
     (no nSV or TQCD selection applied).
 
+`--plot-tagger` (with `--tagger-var`) is a separate, orthogonal switch: standalone
+shape-only (unit-area) overlays of every process for a single tagger-score axis, inclusive
+category only. `--tagger-var` picks the axis: `partqcd` (`FatJet0_ParTPQCD`, the previous
+default) or `pnettxbb` (`FatJet0_pnetTXbb`, the PNet Xbb-vs-QCD score used by one of the
+signal triggers).
+
 Example usage:
 # To plot stacked by process for a single year
 python python/plot_histos.py --year 2022EE --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type process
@@ -38,6 +44,9 @@ python python/plot_histos.py --year 2022EE --region signal-all --indir histogram
 python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type nsv
 python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type nsv2d
 python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-type tqcd
+
+# To plot shape-only (unit-area) overlays of the PNet Xbb-vs-QCD score
+python python/plot_histos.py --year 2024 --region signal-all --indir histograms/25Aug27 --outdir plots --plot-tagger --tagger-var pnettxbb
 """
 from __future__ import annotations
 
@@ -70,6 +79,23 @@ process_grouping = {
 
 flavor_map = {3: "b-jet", 2: "c-jet", 1: "light-jet"}
 
+# Config for the standalone shape-only (--plot-tagger) plots: each entry is a single 1D
+# tagger-score axis, plotted per-process, normalized to unit area, no ratio panel.
+TAGGER_SHAPE_VARS = {
+    "partqcd": {
+        "axis": "partqcd1",
+        "pkl": "histograms_tagger",
+        "xlabel": "Jet 0 ParT QCD",
+        "tag": "tagger_shape",
+    },
+    "pnettxbb": {
+        "axis": "pnettxbb1",
+        "pkl": "histograms_pnettxbb",
+        "xlabel": "Jet 0 PNet Xbb (vs QCD)",
+        "tag": "pnettxbb_shape",
+    },
+}
+
 
 def validate_hist_schema(hists, expected_axes):
     if isinstance(expected_axes, str):
@@ -83,10 +109,29 @@ def validate_hist_schema(hists, expected_axes):
             )
 
 
-def plot_tagger_shapes(hists, category, year_str, outdir, region):
-    """Standalone shape-only plotting for FatJet0_ParTQCD."""
+# Raw process names in the histograms that aren't top-level keys in style_hbb.yaml
+# (they're only defined there via a grouped entry's 'contains' list).
+PROCESS_STYLE_FALLBACK = {"tt": "top", "diboson": "other"}
+
+
+def _process_color(process, style):
+    """Looks up a process's plot color from style_hbb.yaml, falling back to its
+    grouped entry (e.g. 'tt' -> 'top') and finally to None (matplotlib auto-cycle)."""
+    key = process if process in style else PROCESS_STYLE_FALLBACK.get(process)
+    return style.get(key, {}).get("color") if key else None
+
+
+def plot_tagger_shapes(
+    hists, category, year_str, outdir, region, axis_name, xlabel, output_tag, style, processes=None
+):
+    """Standalone shape-only (unit-area) plotting for a single 1D tagger-score axis.
+
+    `processes`, if given, restricts and orders which processes are drawn (e.g.
+    ["Signal", "qcd", "data"]) instead of plotting every process in `hists`.
+    """
     first_hist = next(iter(hists.values()))
     pt_axis = first_hist.axes["pt1"]
+    plot_order = processes if processes is not None else list(hists.keys())
 
     for i in range(len(pt_axis.edges) - 1):
         pt_low, pt_high = pt_axis.edges[i], pt_axis.edges[i + 1]
@@ -96,8 +141,12 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
         fig, ax = plt.subplots(figsize=(10, 8))
         n_plotted = 0
 
-        for process, h in hists.items():
-            h_proj = h[:, i_start, category, :].project("partqcd1")
+        for process in plot_order:
+            if process not in hists:
+                print(f"  Skipping '{process}': not found in loaded histograms.")
+                continue
+            h = hists[process]
+            h_proj = h[:, i_start, category, :].project(axis_name)
             total = h_proj.sum()
             if total <= 0:
                 continue
@@ -109,6 +158,7 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
                 label=process,
                 histtype="step",
                 yerr=False,
+                color=_process_color(process, style),
             )
             n_plotted += 1
 
@@ -117,7 +167,7 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
             print("  Skipping pt bin due to zero events in all processes.")
             continue
 
-        ax.set_xlabel("Jet 0 ParT QCD")
+        ax.set_xlabel(xlabel)
         ax.set_ylabel("Normalized to unity")
         ax.grid(True)
         ax.legend(
@@ -140,7 +190,7 @@ def plot_tagger_shapes(hists, category, year_str, outdir, region):
         )
 
         output_name = (
-            f"{outdir}/{year_str}_{region}_{category}_tagger_shape_ptbin{pt_low}_{pt_high}.png"
+            f"{outdir}/{year_str}_{region}_{category}_{output_tag}_ptbin{pt_low}_{pt_high}.png"
         )
         fig.savefig(output_name, dpi=300, bbox_inches="tight")
         plt.close(fig)
@@ -514,7 +564,7 @@ def main(args):
 
     for year in args.year:
         if args.plot_tagger:
-            pkl_name = f"histograms_tagger_{year}_{args.region}.pkl"
+            pkl_name = f"{TAGGER_SHAPE_VARS[args.tagger_var]['pkl']}_{year}_{args.region}.pkl"
         elif args.plot_type == "nsv":
             pkl_name = f"histograms_nsv_{year}_{args.region}.pkl"
         elif args.plot_type == "nsv2d":
@@ -547,10 +597,25 @@ def main(args):
         style = yaml.safe_load(f)
 
     if args.plot_tagger:
-        validate_hist_schema(histograms, ["partqcd1", "pt1", "category", "genflavor"])
+        cfg = TAGGER_SHAPE_VARS[args.tagger_var]
+        validate_hist_schema(histograms, [cfg["axis"], "pt1", "category", "genflavor"])
         for category in ["inclusive"]:
-            print(f"Plotting tagger shapes for category: {category}, year: {year_str}...")
-            plot_tagger_shapes(histograms, category, year_str, args.outdir, args.region)
+            print(
+                f"Plotting {args.tagger_var} shapes for category: {category}, "
+                f"year: {year_str}..."
+            )
+            plot_tagger_shapes(
+                histograms,
+                category,
+                year_str,
+                args.outdir,
+                args.region,
+                cfg["axis"],
+                cfg["xlabel"],
+                cfg["tag"],
+                style,
+                processes=args.tagger_processes,
+            )
         return
 
     # Call the correct plotting function based on --plot-type
@@ -608,8 +673,26 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--plot-tagger",
-        help="Plot standalone shape-normalized FatJet0_ParTQCD distributions",
+        help="Plot standalone shape-normalized (unit-area) tagger-score distributions; "
+        "which variable is selected via --tagger-var",
         action="store_true",
+    )
+    parser.add_argument(
+        "--tagger-var",
+        help="Which tagger variable to plot shapes for when --plot-tagger is set: "
+        "'partqcd' (FatJet0_ParTPQCD, previous default) or 'pnettxbb' (FatJet0_pnetTXbb, "
+        "the PNet Xbb-vs-QCD score).",
+        type=str,
+        default="partqcd",
+        choices=list(TAGGER_SHAPE_VARS.keys()),
+    )
+    parser.add_argument(
+        "--tagger-processes",
+        help="Restrict --plot-tagger to only these processes (also sets legend/draw order), "
+        "e.g. 'Signal qcd data'. Defaults to all processes found in the histograms.",
+        type=str,
+        nargs="+",
+        default=None,
     )
     args = parser.parse_args()
     main(args)

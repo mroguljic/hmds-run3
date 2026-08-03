@@ -173,7 +173,9 @@ def main(tag, nbins, p1, p2):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", default="2022", help="Year tag")
-    parser.add_argument("--nbins", default=138, type=int, help="Total bins")
+    parser.add_argument("--nbins", default=128, type=int,
+                        help="Bins entering the fit, i.e. rho-masked bins excluded "
+                             "(128 for setup_sr.json; see fit_common.n_fit_bins)")
     # Add these two lines:
     parser.add_argument("--p1", required=True, type=int, help="Params in Null Model")
     parser.add_argument("--p2", required=True, type=int, help="Params in Alt Model")
