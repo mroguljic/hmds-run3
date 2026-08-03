@@ -96,7 +96,8 @@ class FitDriver:
         run(
             f"combine -M FitDiagnostics {ws_name(self.order)} "
             f"--saveShapes --saveWithUncertainties --saveNormalizations "
-            f"-n _{order_tag(self.order)} ",
+            f"-n _{order_tag(self.order)} "
+            f"--cminDefaultMinimizerStrategy 0",
             #f"--cminDefaultMinimizerStrategy 0 --robustFit 1 --robustHesse 1",
             cwd=self.dc,
         )

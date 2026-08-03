@@ -171,7 +171,7 @@ Visualize the results and calculate the p-value to see if the complex model is j
 ```bash
 python plot_ftest.py \
     --tag vbf_01_vs_11 \
-    --nbins 138 \
+    --nbins 128 \
     --p1 2 \
     --p2 4
 ```
