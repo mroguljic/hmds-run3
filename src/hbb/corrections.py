@@ -8,71 +8,33 @@ See https://cms-nanoaod-integration.web.cern.ch/commonJSONSFs/
 from __future__ import annotations
 
 import pathlib
-import sys
 from pathlib import Path
 
-import contextlib
-
 import awkward as ak
-import dask_awkward as dak
 import numpy as np
 import correctionlib
 import pickle
 from coffea.analysis_tools import Weights
 from coffea.nanoevents.methods import vector
 from coffea.nanoevents.methods.nanoaod import JetArray, MuonArray
-from coffea.jetmet_tools import CorrectedJetsFactory, CorrectedMETFactory, JECStack
-from coffea.lookup_tools import extractor
+from coffea.jetmet_tools import CorrectedMETFactory
+from coffea.lookup_tools.correctionlib_wrapper import correctionlib_wrapper
 
-from hbb.MuonScaRe import pt_resol, pt_scale, pt_resol_var, pt_scale_var 
-from hbb.jerc_eras import jec_eras,jer_eras, jec_mc, jer_mc, jec_data, fatjet_jerc_keys, jet_jerc_keys
+from hbb.MuonScaRe import pt_resol, pt_scale, pt_resol_var, pt_scale_var
+from hbb.jerc_eras import (
+    cone_sizes,
+    jec_tags,
+    jer_smear_file,
+    jer_tags,
+    jerc_files,
+    jet_algos,
+    jetveto_file,
+)
 from hbb.taggers import b_taggers
 
 ak.behavior.update(vector.behavior)
 package_path = str(pathlib.Path(__file__).parent.parent.resolve())
 
-
-def _patched_rand_gauss(item):
-    # Workaround for a coffea bug: CorrectedJetsFactory.rand_gauss indexes
-    # item.to_numpy()[[0, -1]] to derive a JER smearing seed, which raises
-    # IndexError on a chunk with zero total jets (e.g. low-HT QCD/W(qq)
-    # chunks where the raw AK8 FatJet collection, cut at pt>170 in NanoAOD,
-    # is entirely empty). The seed is irrelevant when there are no jets to
-    # smear, so fall back to a fixed seed instead of indexing the empty array.
-    materialized = ak.typetracer.length_one_if_typetracer(item)
-    item_np = materialized.to_numpy()
-    if item_np.shape[0] == 0:
-        seeds = np.zeros(2, dtype="i4")
-    else:
-        seeds = item_np[[0, -1]].view("i4")
-    randomstate = np.random.Generator(np.random.PCG64(seeds))
-
-    def getfunction(layout, depth, **kwargs):
-        if isinstance(layout, ak.contents.NumpyArray) or not isinstance(
-            layout, (ak.contents.Content,)
-        ):
-            return ak.contents.NumpyArray(
-                randomstate.normal(size=len(layout)).astype(np.float32)
-            )
-        return None
-
-    out = ak.transform(
-        getfunction,
-        ak.typetracer.length_zero_if_typetracer(item),
-        behavior=item.behavior,
-    )
-    if ak.backend(item) == "typetracer":
-        out = ak.Array(out.layout.to_typetracer(forget_length=True), behavior=out.behavior)
-
-    assert out is not None
-    return out
-
-
-# coffea.jetmet_tools/__init__.py rebinds the package attribute
-# `coffea.jetmet_tools.CorrectedJetsFactory` to the class of the same name,
-# shadowing the submodule, so we have to reach the real module via sys.modules
-# to patch the module-level rand_gauss() that CorrectedJetsFactory.build() calls.
-sys.modules["coffea.jetmet_tools.CorrectedJetsFactory"].rand_gauss = _patched_rand_gauss
 
 # Important Run3 start of Run
 FirstRun_2022C = 355794
@@ -93,7 +55,6 @@ pog_jsons = {
     "pileup": ["LUM", "puWeights.json.gz"],
     "fatjet_jec": ["JME", "fatJet_jerc.json.gz"],
     "jet_jec": ["JME", "jet_jerc.json.gz"],
-    "jetveto": ["JME", "jetvetomaps.json.gz"],
     "btagging": ["BTV", "btagging.json.gz"],
     "jetid" : ["JME", "jetid.json.gz"],
 }
@@ -276,7 +237,9 @@ def get_jetveto_event(jets: JetArray, year: str):
     """
 
     # correction: Non-zero value for (eta, phi) indicates that the region is vetoed
-    cset = correctionlib.CorrectionSet.from_file(get_pog_json("jetveto", year))
+    cset = correctionlib.CorrectionSet.from_file(
+        f"{package_path}/hbb/data/jerc/{jetveto_file}"
+    )
     j, nj = ak.flatten(jets), ak.num(jets)
 
     def get_veto(j, nj, csetstr):
@@ -351,40 +314,133 @@ jec_name_map = {
     "UnClusteredEnergyDeltaY": "MetUnclustEnUpDeltaY",
 }
 
-def apply_jerc(jets, jet_type: str, year: str, runkey: str):
-    #Create CorrectedJetFactory and apply jercs+variations to JetArray or FatJetArray
+def _jerc_cset(jet_type: str):
+    return correctionlib.CorrectionSet.from_file(
+        f"{package_path}/hbb/data/jerc/{jerc_files[jet_type]}"
+    )
 
-    jerc_path =f"{package_path}/hbb/data/jerc"
-    jec_path = f"{jerc_path}/{jec_eras[runkey]}"
 
-    if jet_type == "AK8":
-        jet_key = fatjet_jerc_keys[year]
-    elif jet_type == "AK4":
-        jet_key = jet_jerc_keys[year]
+def _jer_smear_cset():
+    return correctionlib.CorrectionSet.from_file(
+        f"{package_path}/hbb/data/jerc/{jer_smear_file}"
+    )
 
-    #build filelist
-    files = []
-    if "mc" in runkey:
-        jer_path = f"{jerc_path}/{jer_eras[runkey]}"
-        for jec, ps in jec_mc.items():
-            files.append(f"{jec_path}/{jec_eras[runkey]}_{jec}_{jet_key}{ps}")
-        for jer, ps in jer_mc.items():
-            files.append(f"{jer_path}/{jer_eras[runkey]}_{jer}_{jet_key}{ps}")
-    else:
-        for jec, ps in jec_data.items():
-            files.append(f"{jec_path}/{jec_eras[runkey]}_{jec}_{jet_key}{ps}")
 
-    ext = extractor()
-    with contextlib.ExitStack() as stack:
-        real_files = [stack.enter_context(Path(f)) for f in files]
-        ext.add_weight_sets([f"* * {file}" for file in real_files])
-        ext.finalize()
+def _broadcast(event_level, jets, dtype):
+    return ak.values_astype(ak.broadcast_arrays(event_level, jets.pt)[0], dtype)
 
-    jec_stack = JECStack(ext.make_evaluator())
-    jet_factory = CorrectedJetsFactory(jec_name_map, jec_stack)
 
-    corrected_jets = jet_factory.build(jets)
-    return corrected_jets
+def _scaled(jets, factor, mass_fields):
+    #Copy of jets with pt, mass and the derived masses scaled by factor.
+    #Use with_field, not jets[...] = ...: a plain assignment writes back into the
+    #array the variants are built from, and slicing to a field subset loses the
+    #record name, so the variants lose delta_phi/delta_r.
+    out = jets
+    for field in ("JES_jes", "JER"):
+        if field in out.fields:
+            out = ak.without_field(out, field)
+    out = ak.with_field(out, jets.pt * factor, "pt")
+    out = ak.with_field(out, jets.mass * factor, "mass")
+    for field in mass_fields:
+        if field in jets.fields:
+            out = ak.with_field(out, jets[field] * factor, field)
+    return out
+
+
+def _gen_pt_for_smearing(jets, resolution, cone_size: float):
+    #JERC asks for the gen jet only if dR < R/2 and |pt - pt_gen| < 3 sigma pt;
+    #nanoAOD's gen index match is looser than that. Unmatched must be -1: at 0 the
+    #JERSmear tool scales by the JER SF instead of smearing stochastically.
+    gen_pt = jets.pt_gen
+    matched = (
+        (gen_pt > 0)
+        & (jets.dr_gen < cone_size / 2)
+        & (abs(jets.pt - gen_pt) < 3 * resolution * jets.pt)
+    )
+    return ak.where(matched, gen_pt, -1.0)
+
+
+def apply_jerc(jets, jet_type: str, year: str, is_mc: bool, run, event, mass_fields=()):
+    """Apply JEC, and for MC also JER smearing and the JES/JER variations.
+
+    Needs pt_raw/mass_raw/event_rho on the jets (set_ak4jets/set_ak8jets add them).
+    `run` picks the data IOV inside the payload, `event` seeds the JER smearing.
+    `mass_fields` are derived masses (msd, pnetmass, ...) built before the
+    correction is known; the variations scale them along with pt.
+    """
+    algo = jet_algos[jet_type]
+    cset = _jerc_cset(jet_type)
+    tag = jec_tags[year]
+    datatype = "MC" if is_mc else "DATA"
+
+    eta, phi, area = jets.eta, jets.phi, jets.area
+    rho, pt_raw, mass_raw = jets.event_rho, jets.pt_raw, jets.mass_raw
+
+    # L1FastJet + L2Relative + L3Absolute + L2L3Residual in one compound correction
+    jec = correctionlib_wrapper(cset.compound[f"{tag}_{datatype}_L1L2L3Res_{algo}"])
+    jec_args = (area, eta, pt_raw, rho, phi)
+    if not is_mc:
+        jec_args = (*jec_args, _broadcast(run, jets, np.float64))
+    jec_factor = jec(*jec_args)
+
+    out = ak.with_field(jets, jets.pt, "pt_orig")
+    out = ak.with_field(out, jets.mass, "mass_orig")
+    out = ak.with_field(out, jec_factor * pt_raw, "pt")
+    out = ak.with_field(out, jec_factor * mass_raw, "mass")
+
+    if not is_mc:
+        return out  # no smearing and no variations in data
+
+    pt_jec, mass_jec = out.pt, out.mass
+
+    jer_tag = jer_tags[year]
+    resolution = correctionlib_wrapper(cset[f"{jer_tag}_MC_PtResolution_{algo}"])(
+        eta, pt_jec, rho
+    )
+    sf = correctionlib_wrapper(cset[f"{jer_tag}_MC_ScaleFactor_{algo}"])(eta, pt_jec)
+    sf_unc = correctionlib_wrapper(cset[f"{jer_tag}_MC_SFUncertainty_{algo}"])(eta, pt_jec)
+
+    smear = correctionlib_wrapper(_jer_smear_cset()["JERSmear"])
+    gen_pt = _gen_pt_for_smearing(out, resolution, cone_sizes[jet_type])
+    event_id = _broadcast(event, jets, np.int64)
+
+    def smear_factor(scale_factor):
+        return smear(pt_jec, eta, gen_pt, rho, event_id, resolution, scale_factor)
+
+    jer_nom = smear_factor(sf)
+    jer_up = smear_factor(sf + sf_unc)
+    jer_down = smear_factor(sf - sf_unc)
+
+    # derived masses keep their nominal values and only pick up the shifts below
+    out = ak.with_field(out, pt_jec * jer_nom, "pt")
+    out = ak.with_field(out, mass_jec * jer_nom, "mass")
+    jer_record = ak.zip(
+        {
+            "up": _scaled(out, jer_up / jer_nom, mass_fields),
+            "down": _scaled(out, jer_down / jer_nom, mass_fields),
+        },
+        # depth_limit=2 keeps the record at jet level, as CorrectedJetsFactory had it
+        depth_limit=2,
+        with_name="JetSystematic",
+        behavior=jets.behavior,
+    )
+    out = ak.with_field(out, jer_record, "JER")
+
+    # single Total nuisance; the payload also has the Regrouped_* sources
+    junc = correctionlib_wrapper(cset[f"{tag}_MC_Total_{algo}"])(eta, out.pt)
+    jes_record = ak.zip(
+        {
+            "up": _scaled(out, 1 + junc, mass_fields),
+            "down": _scaled(out, 1 - junc, mass_fields),
+        },
+        depth_limit=2,
+        with_name="JetSystematic",
+        behavior=jets.behavior,
+    )
+    out = ak.with_field(out, jes_record, "JES_jes")
+
+    return out
+
 
 def correct_met(met, jets: JetArray):
     #Create CorrectedMETFactory and recluster met

@@ -111,7 +111,12 @@ def set_ak4jets(jets: JetArray, isRealData: bool, year: str, nano_version: str, 
     jets["mass_raw"] = (1 - jets.rawFactor) * jets.mass
     jets["event_rho"] = ak.broadcast_arrays(event_rho, jets.pt)[0]
     if not isRealData:  # only for jer
-        jets["pt_gen"] = ak.values_astype(ak.fill_none(jets.matched_gen.pt, 0), np.float32)
+        # stored here because the processor drops the gen index fields before
+        # apply_jerc runs; -1 marks "no gen match", see apply_jerc
+        jets["pt_gen"] = ak.values_astype(ak.fill_none(jets.matched_gen.pt, -1.0), np.float32)
+        jets["dr_gen"] = ak.values_astype(
+            ak.fill_none(jets.delta_r(jets.matched_gen), 999.0), np.float32
+        )
 
     return jets
 
@@ -175,7 +180,12 @@ def set_ak8jets(fatjets: FatJetArray, isRealData: bool, year: str, nano_version:
     fatjets["mass_raw"] = (1 - fatjets.rawFactor) * fatjets.mass
     fatjets["event_rho"] = ak.broadcast_arrays(event_rho, fatjets.pt)[0]
     if not isRealData:  # only for jer
-        fatjets["pt_gen"] = ak.values_astype(ak.fill_none(fatjets.matched_gen.pt, 0), np.float32)
+        fatjets["pt_gen"] = ak.values_astype(
+            ak.fill_none(fatjets.matched_gen.pt, -1.0), np.float32
+        )
+        fatjets["dr_gen"] = ak.values_astype(
+            ak.fill_none(fatjets.delta_r(fatjets.matched_gen), 999.0), np.float32
+        )
     return fatjets
 
 
