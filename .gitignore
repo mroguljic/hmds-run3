@@ -24,6 +24,7 @@ fitting/results/
 fitting/templates/
 plots/
 *.txt
+!src/hbb/data/mupt/SOURCE.txt
 *.ipynb_checkpoints/
 .vscode/
 condor/

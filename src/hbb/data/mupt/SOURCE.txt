@@ -1,0 +1,47 @@
+Muon pT scale & resolution corrections (MuonScaRe) — provenance
+===============================================================
+
+Copied on: 2026-08-24
+Copied by: Matej Roguljic (with Claude Code)
+
+Source: CMS Analysis Tools central corrections on cvmfs,
+        /cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/<ERA>/2026-06-18/muon_scalesmearing.json.gz
+        (upstream: https://gitlab.cern.ch/cms-analysis-corrections/MUO/<ERA>)
+
+The snapshot directory 2026-06-18 was used explicitly rather than the moving
+"latest" directory, so this copy is reproducible.  At the time of copying the
+contents of 2026-06-18/ and latest/ were byte-identical for every era below.
+
+Files are stored here decompressed (.json) with a year-keyed name, since
+src/hbb/corrections.py::correct_muons() builds the path as
+    src/hbb/data/mupt/{years[year]}.json
+
+  destination file           <- cvmfs era directory <ERA>                 md5 (.json.gz on cvmfs)            md5 (.json here)
+  ------------------------------------------------------------------------------------------------------------------------------
+  2022_Summer22.json         <- Run3-22CDSep23-Summer22-NanoAODv12        869b5fda27271a84cf56ca441745e590   b51c73c032b5220faed77c403b0e4aa8
+  2022_Summer22EE.json       <- Run3-22EFGSep23-Summer22EE-NanoAODv12     8d8ee2e78a88454cd638660c2ea38c0a   cf4e0b33180bc3d095c5f621a8757316
+  2023_Summer23.json         <- Run3-23CSep23-Summer23-NanoAODv12         1a8d876a791d2f09265ca187ee6e6da9   672df7a165deb80b13a1d76f2528a5b3
+  2023_Summer23BPix.json     <- Run3-23DSep23-Summer23BPix-NanoAODv12     0736ebdcccde9336df2cf7e71db6d6e1   866b88a1d2a61e1c56daf21e72e9a389
+  2024_Summer24.json         <- Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15
+                                                                          513725175dc9d13307f4a229dd89d917   be68bdfe0f55ce6eb3118f8b6539f647
+
+Command used (per era):
+  zcat /cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/<ERA>/2026-06-18/muon_scalesmearing.json.gz \
+      > src/hbb/data/mupt/<destination>.json
+
+Which of the two cvmfs files
+----------------------------
+Each 2026-06-18 directory also contains muon_scalesmearing_VXBS.json.gz, the
+vertex/beam-spot-constrained variant, meant for Muon_bsConstrainedPt.  We use the
+nominal muon_scalesmearing.json.gz because correct_muons() feeds standard Muon_pt.
+
+What changed vs. the previous vendored version
+----------------------------------------------
+The files replaced here dated from the 2025-08-14 snapshots (2022/2023) and the
+2025-10-17 = 2025-11-27 snapshot (2024); all corrections were "version": 1.
+The 2026-06-18 files carry "version": 2 with updated parameter values and add an
+extra correction, "RandomSmearing" (evtNr, lumiNr, phi -> random number).
+src/hbb/MuonScaRe.py generates that random number itself and does not read the new
+correction; all correction names, input names/types/order and variation keys
+("nom"/"stat"/"syst"/"rho_stat"/"rho_syst") used by MuonScaRe.py are unchanged, so
+the swap is drop-in and only shifts the corrected pT values (sub-percent).
