@@ -5,6 +5,7 @@ Corrections stored in `hbb/data/jerc/`, copied from:
     /cvmfs/cms-griddata.cern.ch/cat/metadata/JME/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/2026-07-16/
             jet_jerc.json.gz      (AK4PFPuppi)
             fatJet_jerc.json.gz   (AK8PFPuppi)
+            jetvetomaps.json.gz
     /cvmfs/cms-griddata.cern.ch/cat/metadata/JME/JER-Smearing/2025-11-03/
             jer_smear.json.gz
 """
@@ -16,6 +17,7 @@ jerc_files = {
     "AK8": "fatJet_jerc.json.gz",
 }
 jer_smear_file = "jer_smear.json.gz"
+jetveto_file = "jetvetomaps.json.gz"
 
 jec_tags = {
     "2024": "Summer24Prompt24_V5",

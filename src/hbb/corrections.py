@@ -28,6 +28,7 @@ from hbb.jerc_eras import (
     jer_tags,
     jerc_files,
     jet_algos,
+    jetveto_file,
 )
 from hbb.taggers import b_taggers
 
@@ -54,7 +55,6 @@ pog_jsons = {
     "pileup": ["LUM", "puWeights.json.gz"],
     "fatjet_jec": ["JME", "fatJet_jerc.json.gz"],
     "jet_jec": ["JME", "jet_jerc.json.gz"],
-    "jetveto": ["JME", "jetvetomaps.json.gz"],
     "btagging": ["BTV", "btagging.json.gz"],
     "jetid" : ["JME", "jetid.json.gz"],
 }
@@ -237,7 +237,9 @@ def get_jetveto_event(jets: JetArray, year: str):
     """
 
     # correction: Non-zero value for (eta, phi) indicates that the region is vetoed
-    cset = correctionlib.CorrectionSet.from_file(get_pog_json("jetveto", year))
+    cset = correctionlib.CorrectionSet.from_file(
+        f"{package_path}/hbb/data/jerc/{jetveto_file}"
+    )
     j, nj = ak.flatten(jets), ak.num(jets)
 
     def get_veto(j, nj, csetstr):
