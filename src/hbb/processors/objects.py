@@ -50,12 +50,8 @@ def loose_muons(muons: MuonArray, pt_type):
     sel = (
         (getattr(muons, pt_type) > 10)
         & (np.abs(muons.eta) < 2.4)
-        & (muons.looseId)
-        & (muons.pfRelIso04_all < 0.15)
-        & (
-            ((abs(muons.eta) < 1.479) & (abs(muons.dz) < 0.1) & (abs(muons.dxy) < 0.05))
-            | ((abs(muons.eta) >= 1.479) & (abs(muons.dz) < 0.2) & (abs(muons.dxy) < 0.1))
-        )
+        & (muons.mediumId)
+        & (muons.pfIsoId >= 3)  # 3=PFIsoMedium
     )
     return muons[sel]
 
@@ -75,16 +71,7 @@ def good_electrons(electrons: ElectronArray):
     sel = (
         (electrons.pt > 10)
         & (abs(electrons.eta) < 2.5)
-        & (electrons.pfRelIso03_all < 0.15)
-        & (electrons.mvaNoIso_WP90)
-        & (
-            ((abs(electrons.eta) < 1.479) & (abs(electrons.dz) < 0.1) & (abs(electrons.dxy) < 0.05))
-            | (
-                (abs(electrons.eta) >= 1.479)
-                & (abs(electrons.dz) < 0.2)
-                & (abs(electrons.dxy) < 0.1)
-            )
-        )
+        & (electrons.mvaIso_WP90)
     )
     return electrons[sel]
 
