@@ -5,18 +5,36 @@ Runs a coffea processors on a single file or a set of files (ONLY for testing)
 from __future__ import annotations
 
 import argparse
+import logging
 import pickle
 import shutil
 from pathlib import Path
 
+import awkward as ak
 import dask
 import uproot
 import yaml
 from coffea import nanoevents
 from coffea.dataset_tools import apply_to_fileset, max_chunks, preprocess
 
+from hbb.common_vars import DATA_SAMPLES
 from hbb.run_utils import get_dataset_spec, get_fileset
 from hbb.xsecs import xsecs
+
+
+def is_data(dataset: str) -> bool:
+    return any(sample in dataset for sample in DATA_SAMPLES)
+
+
+def nfiles_per_dataset(spec: dict) -> dict:
+    return {dataset: len(entry.get("files") or {}) for dataset, entry in spec.items()}
+
+
+def check_complete(dataset: str, msg: str):
+    # Skipped events renormalize away for MC (sum_genweights), but are lost lumi for data.
+    if is_data(dataset):
+        raise RuntimeError(msg)
+    logging.warning("%s", msg)
 
 
 def run(year: str, fileset: dict, args: argparse.Namespace):
@@ -81,6 +99,12 @@ def run(year: str, fileset: dict, args: argparse.Namespace):
         len(preprocessed_total),
     )
 
+    nfiles_avail = nfiles_per_dataset(preprocessed_available)
+    for dataset, ntotal in nfiles_per_dataset(preprocessed_total).items():
+        ndropped = ntotal - nfiles_avail.get(dataset, 0)
+        if ndropped:
+            check_complete(dataset, f"{dataset}: {ndropped}/{ntotal} files unreadable")
+
     # TODO: customize processor
     from hbb.processors import categorizer
 
@@ -95,9 +119,17 @@ def run(year: str, fileset: dict, args: argparse.Namespace):
         save_skim_nosysts=args.save_skim_nosysts,
     )
 
+    fileset_to_run = preprocessed_available
+    if args.max_chunks:
+        for dataset in fileset_to_run:
+            if is_data(dataset):
+                msg = f"--max-chunks would discard luminosity from {dataset}; MC only"
+                raise ValueError(msg)
+        fileset_to_run = max_chunks(preprocessed_available, args.max_chunks)
+
     full_tg, rep = apply_to_fileset(
         data_manipulation=p,
-        fileset=max_chunks(preprocessed_available, 300),
+        fileset=fileset_to_run,
         schemaclass=nanoevents.NanoAODSchema,
         uproot_options={
             "allow_read_errors_with_report": (OSError, KeyError),
@@ -105,7 +137,13 @@ def run(year: str, fileset: dict, args: argparse.Namespace):
             "timeout": 1800,
         },
     )
-    output, _ = dask.compute(full_tg, rep)
+    output, report = dask.compute(full_tg, rep)
+
+    for dataset, entry in (report or {}).items():
+        exceptions = getattr(entry, "exception", None)
+        nfailed = 0 if exceptions is None else sum(e is not None for e in ak.to_list(exceptions))
+        if nfailed:
+            check_complete(dataset, f"{dataset}: {nfailed} chunks failed to read")
     # print("output ", output)
 
     # save the output to a pickle file
@@ -199,6 +237,9 @@ if __name__ == "__main__":
         choices=["2022", "2022EE", "2023", "2023BPix", "2024"],
     )
     parser.add_argument("--starti", default=0, help="start index of files", type=int)
+    parser.add_argument(
+        "--max-chunks", default=None, help="MC debugging only: chunks per dataset", type=int
+    )
     parser.add_argument("--endi", default=-1, help="end index of files", type=int)
     parser.add_argument(
         "--samples",

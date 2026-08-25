@@ -8,7 +8,7 @@
       JetMET_Run2024G,
       JetMET_Run2024H,
       JetMET_Run2024I,
-    ], "files_per_job": 20, },
+    ], "files_per_job": 5, },
     "QCD": { "subsamples": [
       QCD_HT-200to400,
       QCD_HT-400to600,
@@ -17,6 +17,7 @@
       QCD_HT-1000to1200,
       QCD_HT-1200to1500,
       QCD_HT-1500to2000,
+      QCD_HT-2000,
     ], "files_per_job": 5, },
     "TT": { "subsamples": [
       TTto2L2Nu,

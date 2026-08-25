@@ -35,10 +35,10 @@ python3 -m pip install --user "tritonclient[grpc]"
 
 # run code
 if [[ $BDT == True ]]; then
-    python -u -W ignore $script --BDT --year $year --starti $starti --endi $endi --samples $sample --subsamples $subsample --nano-version ${nano_version} --${run_mode}
+    python -u -W ignore $script --BDT --year $year --starti $starti --endi $endi --samples $sample --subsamples $subsample --nano-version ${nano_version} --${run_mode} || exit 1
     echo "BDT option enabled!"
 else
-    python -u -W ignore $script --year $year --starti $starti --endi $endi --samples $sample --subsamples $subsample --nano-version ${nano_version} --${run_mode}
+    python -u -W ignore $script --year $year --starti $starti --endi $endi --samples $sample --subsamples $subsample --nano-version ${nano_version} --${run_mode} || exit 1
 fi
 # Move final output to EOS
 # This new logic recursively copies the region directories created by the processor
