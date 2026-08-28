@@ -76,7 +76,13 @@ def main(args):
     print(f"fileset: {fileset}")
 
     jdl_templ = "src/condor/submit.templ.jdl"
+    batch_jdl_templ = "src/condor/submit.templ.batch.jdl"
     sh_templ = "src/condor/submit.templ.sh"
+
+    # batch jdls live in a subdirectory so check_jobs.py, which globs condor/<tag>/*.jdl
+    # to count per-job submissions, does not pick them up
+    batch_dir = local_dir / "batch"
+    batch_dir.mkdir(parents=True, exist_ok=True)
 
     # submit jobs
     nsubmit = 0
@@ -117,11 +123,27 @@ def main(args):
                 if Path(f"{localcondor}.log").exists():
                     Path(f"{localcondor}.log").unlink()
 
-                if args.submit:
-                    os.system(f"condor_submit {localcondor}")
-                else:
-                    print("To submit ", localcondor)
                 nsubmit = nsubmit + 1
+
+            # one condor_submit per subsample instead of one per job: the batch jdl
+            # queues every job id, with the per-job .sh files as its executables
+            prefix = f"{args.year}_{subsample}"
+            batch_condor = f"{batch_dir}/{prefix}.jdl"
+            write_template(
+                batch_jdl_templ,
+                batch_condor,
+                {
+                    "dir": local_dir,
+                    "prefix": prefix,
+                    "proxy": proxy,
+                    "jobids": " ".join(str(j) for j in range(njobs)),
+                },
+            )
+
+            if args.submit:
+                os.system(f"condor_submit {batch_condor}")
+            else:
+                print(f"To submit {batch_condor} ({njobs} jobs)")
 
     print(f"Total {nsubmit} jobs")
     print(f"Evaluate BDT: {args.BDT}")

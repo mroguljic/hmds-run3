@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import submit
 from colorama import Fore, Style
 
 from hbb import run_utils
@@ -51,6 +52,9 @@ def main(args):
 
     missing_files = []
     err_files = []
+    # job ids to re-run, keyed by subsample, so they can be submitted in one
+    # condor_submit per subsample rather than one per job
+    missing_by_sample = {}
 
     for sample, n_jdls in jdl_dict.items():
         print(f"Checking {sample}")
@@ -69,9 +73,7 @@ def main(args):
                 err_file = f"condor/{args.tag}/logs/{args.year}_{sample}_{i}.err"
                 missing_files.append(jdl_file)
                 err_files.append(err_file)
-
-                if args.submit_missing:
-                    os.system(f"condor_submit {jdl_file}")
+                missing_by_sample.setdefault(sample, []).append(i)
 
             # and go to the next sample
             continue
@@ -105,10 +107,7 @@ def main(args):
                 err_file = f"condor/{args.tag}/logs/{args.year}_{sample}_{i}.err"
                 missing_files.append(jdl_file)
                 err_files.append(err_file)
-                print(missing_files)
-
-                if args.submit_missing:
-                    os.system(f"condor_submit {jdl_file}")
+                missing_by_sample.setdefault(sample, []).append(i)
 
             if i not in outs_parquet and i in outs_pickles:
                 print_red(
@@ -118,6 +117,28 @@ def main(args):
                 err_file = f"condor/{args.tag}/logs/{args.year}_{sample}_{i}.err"
                 missing_files.append(jdl_file)
                 err_files.append(err_file)
+                missing_by_sample.setdefault(sample, []).append(i)
+
+    if args.submit_missing and missing_by_sample:
+        batch_dir = Path(f"condor/{args.tag}/batch_resubmit")
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        proxy = os.environ["X509_USER_PROXY"]
+
+        for sample, jobids in missing_by_sample.items():
+            prefix = f"{args.year}_{sample}"
+            batch_condor = f"{batch_dir}/{prefix}.jdl"
+            submit.write_template(
+                "src/condor/submit.templ.batch.jdl",
+                batch_condor,
+                {
+                    "dir": f"condor/{args.tag}",
+                    "prefix": prefix,
+                    "proxy": proxy,
+                    "jobids": " ".join(str(j) for j in sorted(set(jobids))),
+                },
+            )
+            print(f"Resubmitting {len(set(jobids))} jobs for {sample}")
+            os.system(f"condor_submit {batch_condor}")
 
     print(f"{len(missing_files)} files to re-run:")
     for f in missing_files:

@@ -48,10 +48,10 @@ fi
 
 # 1. First, handle the githash and pickle files
 xrdfs ${t2_prefixes} mkdir -p "/${outdir}/githashes"
-xrdcp -f commithash.txt "${t2_prefixes}/${outdir}/githashes/commithash_${jobnum}.txt"
+xrdcp -f commithash.txt "${t2_prefixes}/${outdir}/githashes/commithash_${jobnum}.txt" || exit 1
 
 xrdfs ${t2_prefixes} mkdir -p "/${outdir}/pickles"
-xrdcp -f *.pkl "${t2_prefixes}/${outdir}/pickles/out_${jobnum}.pkl"
+xrdcp -f *.pkl "${t2_prefixes}/${outdir}/pickles/out_${jobnum}.pkl" || exit 1
 
 # 2. Next, handle the combined parquet files
 for file in *.parquet; do
@@ -67,7 +67,7 @@ for file in *.parquet; do
     final_filename="part${jobnum}.parquet"
 
     # Copy the file to its final, nested destination with the new name
-    xrdcp -f "$$file" "${t2_prefixes}/${outdir}/parquet/$${jer_name}/$${region_name}/$${final_filename}"
+    xrdcp -f "$$file" "${t2_prefixes}/${outdir}/parquet/$${jer_name}/$${region_name}/$${final_filename}" || exit 1
 done
 
 
