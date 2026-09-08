@@ -1,28 +1,30 @@
 # HMDS SR Fitting
 
 Runs from skimmed parquet files -> histograms -> datacards/workspace -> F-test -> fit -> plots/limits.
-Everything below runs from `fitting/` in the `hbb` micromamba env. Examples use tag `20260721`, year `2024`, signal tag 20260721_private_v15_private (messy bookkeeping of a private signal). To be changed as necessary.
+Everything below runs from `fitting/` in the `hbb` micromamba env. Examples use skim tag `260826_v15`
+(signal tag `260826_v15_private`), results tag `260826`, year `2024`. To be changed as necessary,
+check what's newest under `/eos/uscms/store/group/lpchbbrun3/roguljic/hmds/` before starting a fresh run.
 
 ## TLDR
 
 ```bash
 
 # 1) histograms (parquet skims -> ROOT templates)
-python make_hists.py --year 2024 --tag 20260721_v15 --sig-tag 20260721_private_v15_private \
-  --setup setup_sr.json --outdir results/20260721 --save-root
+python make_hists.py --year 2024 --tag 260826_v15 --sig-tag 260826_v15_private \
+  --setup setup_sr.json --outdir results/260826 --save-root
 
 # 2) pick the background-model order (F-test)
-python run_fit.py --tag 20260721 --year 2024 --stages ftest
+python run_fit.py --tag 260826 --year 2024 --stages ftest
 
 # 3) datacards + workspace + fit + plots + GoF + limit
-python run_fit.py --tag 20260721 --year 2024 --stages fitdiag,postfit,gof,limit
+python run_fit.py --tag 260826 --year 2024 --stages fitdiag,postfit,gof,limit
 ```
 
-Note `make_hists.py --tag` is the *skim* tag (`20260721_v15`), while every
-other `--tag` below is the *results* tag (`20260721`, i.e. `--outdir`'s
+Note `make_hists.py --tag` is the *skim* tag (`260826_v15`), while every
+other `--tag` below is the *results* tag (`260826`, i.e. `--outdir`'s
 subdirectory), as shown in this example, they don't have to match.
 
-Everything after step 1 is driven by `run_fit.py`, and results are stored in `results/20260721/2024/`.
+Everything after step 1 is driven by `run_fit.py`, and results are stored in `results/260826/2024/`.
 Step 2 writes `chosen_order.txt`; step 3 reads it
 automatically, so you don't need to pass `--order` yourself (pass it
 explicitly, e.g. `--order 2,0,1,0`, to run a specific order without redoing the F-test).
@@ -40,14 +42,14 @@ pt/rho Bernstein-polynomial degrees of the **MC transfer factor** and the
 
 ## What each step does
 
-1. **`make_hists.py`** — reads skims, writes `results/20260721/fitting_2024_sr_msd.root` (templates for the datacard maker) plus `.pkl` histograms (for `python/plot_histos.py`).
+1. **`make_hists.py`** — reads skims, writes `results/260826/fitting_2024_sr_msd.root` (templates for the datacard maker) plus `.pkl` histograms (for `python/plot_histos.py`).
 Builds nominal + JES/JER/UES/pileup/ISR/FSR up/down variations. Data is blinded to 1/10 by default (`--prescale`, default 10); pass `--prescale 1` for a full, unblinded run.
 Model geometry (pt bins, msd binning, categories) comes from `setup_sr.json`.
 The templates are prerequisite for `run_fit.py`.
 
 2. **F-test (`--stages ftest`)** Orchestrates `run_ftest_scan.py`; run it directly instead of through `run_fit.py` for the step-by-step log:
    ```bash
-   python run_ftest_scan.py --tag 20260721 --year 2024
+   python run_ftest_scan.py --tag 260826 --year 2024
    ```
    Stops in each direction once the next order gives no significant
    improvement (F-test p ≥ 0.05, via `scipy.stats.f`). `--nbins` overrides
@@ -80,5 +82,5 @@ The templates are prerequisite for `run_fit.py`.
 
 - **`plot_mctf_scan.py`** — fits the MC transfer factor at several candidate   orders and plots them against the raw MC pass/fail ratio:
   ```bash
-  python plot_mctf_scan.py --tag 20260721 --year 2024 --orders "0,0;1,0;1,1;2,0;1,2"
+  python plot_mctf_scan.py --tag 260826 --year 2024 --orders "0,0;1,0;1,1;2,0;1,2"
   ```
