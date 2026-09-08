@@ -343,7 +343,7 @@ def main(args):
                     del events
                     gc.collect()
 
-                if h.sum() > 0:
+                if h.sum().value > 0:
                     histograms[process] = h
 
             if args.save_root:
