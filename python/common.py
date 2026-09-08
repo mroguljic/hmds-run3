@@ -14,7 +14,6 @@ year_map = {
 common_mc = {
     "Signal": {"Signal"},
     "qcd": {
-        "QCD_HT-100to200",
         "QCD_HT-200to400",
         "QCD_HT-400to600",
         "QCD_HT-600to800",

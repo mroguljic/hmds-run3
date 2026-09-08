@@ -2,12 +2,16 @@
 """
 Sequential F-test order scan for the HMDS SR rhalphabet transfer function.
 
-Scans the MC transfer factor order (--mc-pt-order/--mc-rho-order) to convergence,
-fixes it, then scans the data-residual order (--res-pt-order/--res-rho-order),
-stopping in each direction when the next higher-order model gives no significant
-improvement (F-test p > threshold). Builds each workspace on demand (cached),
-runs run_ftest.py's Combine commands, and computes the empirical F-test p-value
-from the toys. Prints a step-by-step log and the final chosen model.
+Phase 1 (not related to CMS detector geometry :)) is the MC transfer factor order.
+Fit purely to the QCD MC pass/fail templates via card_utils.fit_mc_tf().
+The order is chosen by an F-test on that MC-only chi2, exactly analogous to
+Phase 2 but comparing the Bernstein fit to the raw MC ratio instead of a
+Combine GoodnessOfFit statistic to data.
+
+Phase 2 (data residual order) fits to data: MC order is fixed at the
+Phase 1 best order, and each candidate residual order is F-tested against
+data by building a full workspace and running run_ftest.py's Combine
+commands (GoodnessOfFit toys). Workspaces are cached on disk.
 
 Usable standalone:
   python run_ftest_scan.py --tag 20260721 --year 2024
@@ -17,17 +21,129 @@ or via the driver, which imports scan() directly:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
 import numpy as np
+import rhalphalib as rl
+from scipy.stats import f as f_dist
 
 from fit_common import FITTING_DIR, dc_dir, n_fit_bins, run, ws_name
 
 sys.path.insert(0, str(FITTING_DIR))
 import run_ftest  # noqa: E402
+from card_utils import fit_mc_tf, mc_tf_chi2, raw_pass_fail_ratio  # noqa: E402
 from plot_ftest import calculate_f_statistic, get_chi2_values  # noqa: E402
+
+
+def load_mc_context(cfg):
+    """
+    Build the (pt, rho) grid + raw MC pass/fail ratio needed by fit_mc_tf(),
+    exactly as make_datacards.py / plot_mctf_scan.py do. Only supports a
+    single category/region, matching make_datacards.py's single global
+    --mc-*-order CLI knob.
+    """
+    with (FITTING_DIR / cfg["setup"]).open() as f:
+        config = json.load(f)
+
+    root_file_name = config.get("root_filename", "signalregion.root").replace("{year}", cfg["year"])
+    infile_path = Path(cfg["indir"]) / root_file_name
+
+    qcd_tf_proc = config.get("qcd_proc", "QCD")
+    pt_min_scale = config.get("pt_min_scale", 450.0)
+    regions_to_fit = config.get("regions_to_fit", [""])
+    rho_min = config.get("rho_scaling_min", -6.0)
+    rho_max = config.get("rho_scaling_max", -2.1)
+
+    msd_cfg = config["observable"]
+    msdbins = np.linspace(msd_cfg["min"], msd_cfg["max"], msd_cfg["nbins"] + 1)
+    msd = rl.Observable(msd_cfg["name"], msdbins)
+
+    cats_cfg = config["categories"]
+    cats = [c for c in cats_cfg if c != "mucr"]
+    if len(cats) != 1 or len(regions_to_fit) != 1:
+        raise SystemExit(
+            f"[ftest_scan] mc_scan_dim only supports a single category/region "
+            f"(got cats={cats}, regions_to_fit={regions_to_fit}); "
+            "make_datacards.py's --mc-*-order is a single global order anyway."
+        )
+    cat, reg = cats[0], regions_to_fit[0]
+
+    ptbins = np.array(cats_cfg[cat].get("bins_pt", cats_cfg[cat].get("bins")), dtype=float)
+    npt = len(ptbins) - 1
+    ptpts, msdpts = np.meshgrid(
+        ptbins[:-1] + 0.3 * np.diff(ptbins), msdbins[:-1] + 0.5 * np.diff(msdbins), indexing="ij"
+    )
+    rhopts = 2 * np.log(msdpts / ptpts)
+    ptscaled = (ptpts - pt_min_scale) / (1200.0 - pt_min_scale)
+    rhoscaled = (rhopts - rho_min) / (rho_max - rho_min)
+    validbins = (rhoscaled >= 0.0) & (rhoscaled <= 1.0)
+    rhoscaled[~validbins] = 1
+
+    ratio, err = raw_pass_fail_ratio(infile_path, qcd_tf_proc, reg, cat, msd, npt)
+
+    return {
+        "infile_path": infile_path, "qcd_tf_proc": qcd_tf_proc, "cat": cat, "reg": reg,
+        "year": cfg["year"], "msd": msd, "npt": npt, "ptscaled": ptscaled,
+        "rhoscaled": rhoscaled, "validbins": validbins, "ratio": ratio, "err": err,
+        "nbins": int(validbins.sum()),
+    }
+
+
+def mc_chi2_cached(mc_ctx, order, cache):
+    if order not in cache:
+        tf_MCtempl, _qcdfit, qcdeff, _fitted = fit_mc_tf(
+            mc_ctx["infile_path"], mc_ctx["qcd_tf_proc"], mc_ctx["cat"], mc_ctx["reg"],
+            mc_ctx["year"], mc_ctx["msd"], mc_ctx["npt"], mc_ctx["ptscaled"],
+            mc_ctx["rhoscaled"], mc_ctx["validbins"], order,
+        )
+        chi2, _nvalid = mc_tf_chi2(
+            tf_MCtempl, qcdeff, mc_ctx["ptscaled"], mc_ctx["rhoscaled"],
+            mc_ctx["validbins"], mc_ctx["ratio"], mc_ctx["err"],
+        )
+        cache[order] = chi2
+    return cache[order]
+
+
+def mc_ftest(o_null, o_alt, mc_ctx, cache):
+    chi2_n = mc_chi2_cached(mc_ctx, o_null, cache)
+    chi2_a = mc_chi2_cached(mc_ctx, o_alt, cache)
+    p1 = (o_null[0] + 1) * (o_null[1] + 1)
+    p2 = (o_alt[0] + 1) * (o_alt[1] + 1)
+    nbins = mc_ctx["nbins"]
+    F = calculate_f_statistic(chi2_n, chi2_a, p1, p2, nbins)
+    pval = float(f_dist.sf(F, p2 - p1, nbins - p2)) if np.isfinite(F) and F >= 0 else float("nan")
+    print(
+        f"  --> null({o_null}) vs alt({o_alt}): p1={p1} p2={p2} "
+        f"chi2_null={chi2_n:.3f} chi2_alt={chi2_a:.3f} F={F:.3f}  p-value={pval:.3f}",
+        flush=True,
+    )
+    return pval
+
+
+def mc_scan_dim(mc_ctx, base, idx, cap, label, cfg, cache):
+    orders = list(base)
+    while orders[idx] < cap:
+        nxt = list(orders)
+        nxt[idx] += 1
+        print(f"\n[{label}] test order[{idx}] {orders[idx]} -> {nxt[idx]}", flush=True)
+        try:
+            pval = mc_ftest(tuple(orders), tuple(nxt), mc_ctx, cache)
+        except RuntimeError as e:
+            print(f"[{label}] fit failed ({e}); stopping.", flush=True)
+            break
+        if np.isnan(pval):
+            print(f"[{label}] NaN p-value; stopping.", flush=True)
+            break
+        if pval < cfg["pthresh"]:
+            print(f"[{label}] significant (p={pval:.3f}) -> adopt {nxt[idx]}", flush=True)
+            orders = nxt
+        else:
+            print(f"[{label}] not significant (p={pval:.3f}) -> keep {orders[idx]}", flush=True)
+            break
+    return tuple(orders)
 
 
 def build_ws(o, cfg):
@@ -119,6 +235,7 @@ def scan(tag, year, model="srModel", outdir="results", indir=None,
         "year": year,
         "outdir": outdir,
         "indir": indir if indir else f"results/{tag}",
+        "setup": setup,
         "seed": seed,
         "ntoys": ntoys,
         "pthresh": pthresh,
@@ -130,18 +247,23 @@ def scan(tag, year, model="srModel", outdir="results", indir=None,
           f"seed={seed}, ntoys={ntoys}, p<{pthresh}", flush=True)
 
     print("=" * 70, flush=True)
-    print("PHASE 1: MC transfer factor scan (data residual fixed at 0,0)", flush=True)
+    print("PHASE 1: MC transfer factor scan (fit to MC only - no data, no Combine)", flush=True)
     print("=" * 70, flush=True)
+    mc_ctx = load_mc_context(cfg)
+    mc_cache = {}
+    print(f"[ftest_scan] MC-TF fit grid: {mc_ctx['cat']} {mc_ctx['reg'] or '(inclusive)'}, "
+          f"nbins={mc_ctx['nbins']} (pt x msd, rho-masked bins excluded)", flush=True)
+
     #First scan pT axis by assuming some reasonable (order=1) rho dependence
-    o = scan_dim((0, 1, 0, 0), idx=0, cap=2, label="MC-pt@rho1", cfg=cfg) # cap 2 because we have three pT bins
+    o = mc_scan_dim(mc_ctx, (0, 1), idx=0, cap=2, label="MC-pt@rho1", cfg=cfg, cache=mc_cache) # cap 2 because we have three pT bins
 
     # Then scan rho, taking optimal pT value
-    o = (o[0], 0, 0, 0)
-    o = scan_dim(o, idx=1, cap=3, label="MC-rho", cfg=cfg)
+    o = (o[0], 0)
+    o = mc_scan_dim(mc_ctx, o, idx=1, cap=3, label="MC-rho", cfg=cfg, cache=mc_cache)
     if o[1] != 1 and o[0] < 2:
         # If best rho order!=1, do we want to rerun pT tuning?
         print("\n[MC-pt confirm] re-check pt at final rho", flush=True)
-        o = scan_dim(o, idx=0, cap=2, label="MC-pt-confirm", cfg=cfg)
+        o = mc_scan_dim(mc_ctx, o, idx=0, cap=2, label="MC-pt-confirm", cfg=cfg, cache=mc_cache)
     mc_final = o
     print(f"\n>>> MC factor converged at (pt,rho)=({mc_final[0]},{mc_final[1]})", flush=True)
 

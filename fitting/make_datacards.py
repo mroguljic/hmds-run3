@@ -20,6 +20,7 @@ import ROOT
 from card_utils import (
     add_systematics,
     badtemplate,
+    fit_mc_tf,
     get_merged_template,
     get_template,
     plot_mctf,
@@ -185,124 +186,42 @@ def rhalphabet(args):
         rhoscaled[~validbins[cat]] = 1
 
         tf_params[cat] = {}
-        fitfailed_qcd = {}
 
         for reg in regions_to_fit:
-            fitfailed_qcd[reg] = 0
-            while fitfailed_qcd[reg] < 5:
-                qcdmodel = rl.Model(f"qcdmodel_{cat}_{reg}")
-                qcdpass, qcdfail = 0.0, 0.0
-
-                for ptbin in range(npt):
-                    binindex = ptbin
-                    if analysis == "vbf" and "hi" in cat:
-                        binindex = 1
-
-                    failCh = rl.Channel(f"ptbin{ptbin}{cat}fail{year}{reg}")
-                    passCh = rl.Channel(f"ptbin{ptbin}{cat}pass{year}{reg}")
-                    qcdmodel.addChannel(failCh)
-                    qcdmodel.addChannel(passCh)
-
-                    failTempl = get_template(
-                        infile_path, qcd_tf_proc, "fail_", binindex + 1, cat, msd, "nominal"
-                    )
-                    passTempl = get_template(
-                        infile_path, qcd_tf_proc, f"pass_{reg}_", binindex + 1, cat, msd, "nominal"
-                    )
-
-                    failCh.setObservation(failTempl, read_sumw2=True)
-                    passCh.setObservation(passTempl, read_sumw2=True)
-                    qcdfail += failCh.getObservation()[0].sum()
-                    qcdpass += passCh.getObservation()[0].sum()
-
-                qcdeff = qcdpass / qcdfail
-                print(f"Inclusive P/F ({cat} {reg}) = {qcdeff:.4f}")
-
-                # Initial Values Loading
-                initF = initvals_dir / f"initial_vals_{cat}_{reg}.json"
-                initial_vals = None
-                if initF.exists():
-                    with initF.open() as f:
-                        loaded = np.array(json.load(f)["initial_vals"])
-                    if (loaded.shape[0] - 1 == args.mc_pt_order) and (
-                        loaded.shape[1] - 1 == args.mc_rho_order
-                    ):
-                        initial_vals = loaded
-                    else:
-                        print(f"Order Mismatch for {reg}. Resetting.")
-
-                if initial_vals is None:
-                    initial_vals = np.full((args.mc_pt_order + 1, args.mc_rho_order + 1), 1.0)
-
-                tf_MCtempl = rl.BasisPoly(
-                    f"tf_MCtempl_{cat}{reg}{year}",
-                    (args.mc_pt_order, args.mc_rho_order),
-                    ["pt", "rho"],
-                    basis="Bernstein",
-                    init_params=initial_vals,
-                    limits=(0, 10),
-                )
-
-                tf_MCtempl_params = qcdeff * tf_MCtempl(ptscaled, rhoscaled)
-
-                for ptbin in range(npt):
-                    failCh = qcdmodel[f"ptbin{ptbin}{cat}fail{year}{reg}"]
-                    passCh = qcdmodel[f"ptbin{ptbin}{cat}pass{year}{reg}"]
-
-                    failObs = failCh.getObservation()[0]
-                    qcdparams = np.array(
-                        [
-                            rl.IndependentParameter(f"qcdparam_ptbin{ptbin}{cat}{year}{reg}_{i}", 0)
-                            for i in range(msd.nbins)
-                        ]
-                    )
-                    scaledparams = (
-                        failObs * (1 + 10.0 / np.maximum(1.0, np.sqrt(failObs))) ** qcdparams
-                    )
-
-                    fail_qcd = rl.ParametericSample(
-                        f"ptbin{ptbin}{cat}fail{year}{reg}_qcd",
-                        rl.Sample.BACKGROUND,
-                        msd,
-                        scaledparams,
-                    )
-                    failCh.addSample(fail_qcd)
-
-                    pass_qcd = rl.TransferFactorSample(
-                        f"ptbin{ptbin}{cat}pass{year}{reg}_qcd",
-                        rl.Sample.BACKGROUND,
-                        tf_MCtempl_params[ptbin, :],
-                        fail_qcd,
-                    )
-                    passCh.addSample(pass_qcd)
-
-                    failCh.mask = validbins[cat][ptbin]
-                    passCh.mask = validbins[cat][ptbin]
-
-                # Fit
-                qcdfit_ws = ROOT.RooWorkspace("w")
-                simpdf, obs = qcdmodel.renderRoofit(qcdfit_ws)
-                qcdfit = simpdf.fitTo(
-                    obs,
-                    ROOT.RooFit.Extended(True),
-                    ROOT.RooFit.SumW2Error(True),
-                    ROOT.RooFit.Strategy(2),
-                    ROOT.RooFit.Save(),
-                    ROOT.RooFit.PrintLevel(-1),
-                )
-
-                if qcdfit.status() != 0:
-                    fitfailed_qcd[reg] += 1
+            # Initial Values Loading
+            initF = initvals_dir / f"initial_vals_{cat}_{reg}.json"
+            initial_vals = None
+            if initF.exists():
+                with initF.open() as f:
+                    loaded = np.array(json.load(f)["initial_vals"])
+                if (loaded.shape[0] - 1 == args.mc_pt_order) and (
+                    loaded.shape[1] - 1 == args.mc_rho_order
+                ):
+                    initial_vals = loaded
                 else:
-                    allparams = dict(zip(qcdfit.nameArray(), qcdfit.valueArray()))
-                    pvalues = [allparams[p.name] for p in tf_MCtempl.parameters.reshape(-1)]
-                    new_values = np.array(pvalues).reshape(tf_MCtempl.parameters.shape)
-                    with initF.open("w") as outfile:
-                        json.dump({"initial_vals": new_values.tolist()}, outfile)
-                    break
+                    print(f"Order Mismatch for {reg}. Resetting.")
 
-            if fitfailed_qcd[reg] >= 5:
-                raise RuntimeError(f"Could not fit QCD for {cat} {reg} after 5 tries!")
+            bin_indices = [
+                1 if (analysis == "vbf" and "hi" in cat) else ptbin + 1 for ptbin in range(npt)
+            ]
+            tf_MCtempl, qcdfit, qcdeff, new_values = fit_mc_tf(
+                infile_path,
+                qcd_tf_proc,
+                cat,
+                reg,
+                year,
+                msd,
+                npt,
+                ptscaled,
+                rhoscaled,
+                validbins[cat],
+                (args.mc_pt_order, args.mc_rho_order),
+                init_params=initial_vals,
+                bin_indices=bin_indices,
+            )
+            print(f"Inclusive P/F ({cat} {reg}) = {qcdeff:.4f}")
+            with initF.open("w") as outfile:
+                json.dump({"initial_vals": new_values.tolist()}, outfile)
 
             plot_mctf(
                 tf_MCtempl,

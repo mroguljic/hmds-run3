@@ -2,7 +2,7 @@
 Datacard Utilities - common helper functions for reading templates,
 merging histograms, and making transfer factor plots.
 
-Author(s): Gabi Hamilton, Lara Zygala, Cristina Mantilla
+Author(s): Gabi Hamilton, Lara Zygala, Cristina Mantilla, Matej Roguljic
 Date: Feb 2026
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import rhalphalib as rl
 import ROOT
 
 # Constants
@@ -145,6 +146,167 @@ def one_bin(filename, sName, region, ptbin, cat, syst):
     error2 = h.GetBinError(1) ** 2
 
     return (np.array([integral]), np.array([0.0, 1.0]), "onebin", np.array([error2]))
+
+
+def fit_mc_tf(
+    infile_path,
+    qcd_tf_proc,
+    cat,
+    reg,
+    year,
+    msd,
+    npt,
+    ptscaled,
+    rhoscaled,
+    validbins,
+    order,
+    init_params=None,
+    max_tries=5,
+    bin_indices=None,
+):
+    """
+    Fit a Bernstein tf_MCtempl(pt, rho) of the given (pt_order, rho_order) to the
+    QCD MC pass/fail ratio via a standalone RooFit fit. Both the observation and
+    the pdf here are built purely from MC templates (qcd_tf_proc)
+
+    Returns (tf_MCtempl, qcdfit, qcdeff, fitted_values) where fitted_values is the
+    fitted Bernstein-coefficient array (same shape as `order`-derived init_params).
+    """
+    mc_pt_order, mc_rho_order = order
+    if init_params is None:
+        init_params = np.full((mc_pt_order + 1, mc_rho_order + 1), 1.0)
+    if bin_indices is None:
+        bin_indices = [ptbin + 1 for ptbin in range(npt)]
+
+    for _attempt in range(max_tries):
+        qcdmodel = rl.Model(f"qcdmodel_{cat}_{reg}")
+        qcdpass, qcdfail = 0.0, 0.0
+
+        for ptbin in range(npt):
+            failCh = rl.Channel(f"ptbin{ptbin}{cat}fail{year}{reg}")
+            passCh = rl.Channel(f"ptbin{ptbin}{cat}pass{year}{reg}")
+            qcdmodel.addChannel(failCh)
+            qcdmodel.addChannel(passCh)
+
+            failTempl = get_template(
+                infile_path, qcd_tf_proc, "fail_", bin_indices[ptbin], cat, msd, "nominal"
+            )
+            passTempl = get_template(
+                infile_path, qcd_tf_proc, f"pass_{reg}_", bin_indices[ptbin], cat, msd, "nominal"
+            )
+
+            failCh.setObservation(failTempl, read_sumw2=True)
+            passCh.setObservation(passTempl, read_sumw2=True)
+            qcdfail += failCh.getObservation()[0].sum()
+            qcdpass += passCh.getObservation()[0].sum()
+
+        qcdeff = qcdpass / qcdfail
+
+        tf_MCtempl = rl.BasisPoly(
+            f"tf_MCtempl_{cat}{reg}{year}",
+            (mc_pt_order, mc_rho_order),
+            ["pt", "rho"],
+            basis="Bernstein",
+            init_params=init_params,
+            limits=(0, 10),
+        )
+        tf_MCtempl_params = qcdeff * tf_MCtempl(ptscaled, rhoscaled)
+
+        for ptbin in range(npt):
+            failCh = qcdmodel[f"ptbin{ptbin}{cat}fail{year}{reg}"]
+            passCh = qcdmodel[f"ptbin{ptbin}{cat}pass{year}{reg}"]
+
+            failObs = failCh.getObservation()[0]
+            qcdparams = np.array(
+                [
+                    rl.IndependentParameter(f"qcdparam_ptbin{ptbin}{cat}{year}{reg}_{i}", 0)
+                    for i in range(msd.nbins)
+                ]
+            )
+            scaledparams = (
+                failObs * (1 + 10.0 / np.maximum(1.0, np.sqrt(failObs))) ** qcdparams
+            )
+
+            fail_qcd = rl.ParametericSample(
+                f"ptbin{ptbin}{cat}fail{year}{reg}_qcd", rl.Sample.BACKGROUND, msd, scaledparams
+            )
+            failCh.addSample(fail_qcd)
+
+            pass_qcd = rl.TransferFactorSample(
+                f"ptbin{ptbin}{cat}pass{year}{reg}_qcd",
+                rl.Sample.BACKGROUND,
+                tf_MCtempl_params[ptbin, :],
+                fail_qcd,
+            )
+            passCh.addSample(pass_qcd)
+
+            failCh.mask = validbins[ptbin]
+            passCh.mask = validbins[ptbin]
+
+        qcdfit_ws = ROOT.RooWorkspace("w")
+        simpdf, obs = qcdmodel.renderRoofit(qcdfit_ws)
+        qcdfit = simpdf.fitTo(
+            obs,
+            ROOT.RooFit.Extended(True),
+            ROOT.RooFit.SumW2Error(True),
+            ROOT.RooFit.Strategy(2),
+            ROOT.RooFit.Save(),
+            ROOT.RooFit.PrintLevel(-1),
+        )
+
+        if qcdfit.status() == 0:
+            param_names = [p.name for p in tf_MCtempl.parameters.reshape(-1)]
+            allparams = dict(zip(qcdfit.nameArray(), qcdfit.valueArray()))
+            fitted_values = np.array([allparams[p] for p in param_names]).reshape(
+                tf_MCtempl.parameters.shape
+            )
+            # RooFit's fitTo() only updates its own internal RooRealVars; sync the
+            # Python-side IndependentParameter.value too, otherwise tf_MCtempl(...,
+            # nominal=True) (used for plotting) silently evaluates at init_params
+            # instead of the fit result.
+            tf_MCtempl.set_parvalues(fitted_values.reshape(-1))
+            return tf_MCtempl, qcdfit, qcdeff, fitted_values
+
+    raise RuntimeError(f"Could not fit MC TF for {cat} {reg} order {order} after {max_tries} tries!")
+
+
+def raw_pass_fail_ratio(infile_path, qcd_tf_proc, reg, cat, msd, npt, bin_indices=None):
+    """
+    Raw QCD MC pass/fail ratio and its propagated statistical error, per pt bin
+    and msd bin
+    """
+    if bin_indices is None:
+        bin_indices = [ptbin + 1 for ptbin in range(npt)]
+
+    ratio = np.full((npt, msd.nbins), np.nan)
+    err = np.full((npt, msd.nbins), np.nan)
+    for ptbin in range(npt):
+        failT, _, _, failW2 = get_template(
+            infile_path, qcd_tf_proc, "fail_", bin_indices[ptbin], cat, msd, "nominal"
+        )
+        passT, _, _, passW2 = get_template(
+            infile_path, qcd_tf_proc, f"pass_{reg}_", bin_indices[ptbin], cat, msd, "nominal"
+        )
+        m = failT > 0
+        ratio[ptbin][m] = passT[m] / failT[m]
+        relvar = np.zeros_like(failT)
+        relvar[m] = failW2[m] / failT[m] ** 2
+        pm = m & (passT > 0)
+        relvar[pm] += passW2[pm] / passT[pm] ** 2
+        err[ptbin][m] = ratio[ptbin][m] * np.sqrt(relvar[m])
+    return ratio, err
+
+
+def mc_tf_chi2(tf_MCtempl, qcdeff, ptscaled, rhoscaled, validbins, ratio, err):
+    """
+    Chi2 of a fitted (post fit_mc_tf) tf_MCtempl against the raw MC ratio/err
+    from raw_pass_fail_ratio, restricted to valid (unmasked, finite) bins.
+    Returns (chi2, n_valid_bins).
+    """
+    mctf = qcdeff * tf_MCtempl(ptscaled, rhoscaled, nominal=True)
+    resid = (ratio - mctf) / err
+    m = np.isfinite(resid) & validbins
+    return float(np.sum(resid[m] ** 2)), int(m.sum())
 
 
 def plot_mctf(

@@ -184,7 +184,7 @@ def main(args):
         pmap = json.load(f)
 
     # We are working with private signal atm so it ends up in a different dir
-    MAIN_DATA_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
+    MAIN_DATA_DIR = args.main_dir
     bkg_data_dir = (
         Path(args.data_dir) if args.data_dir else Path(MAIN_DATA_DIR) / args.tag / args.year
     )
@@ -318,7 +318,7 @@ def main(args):
                 if process == data_map_key and syst != "nominal":
                     continue
 
-                h = hist.Hist(axis_var, axis_bin, axis_cat, axis_flav)
+                h = hist.Hist(axis_var, axis_bin, axis_cat, axis_flav, storage=hist.storage.Weight())
                 for dataset in datasets:
                     events = utils.load_samples(
                         data_dir=sig_data_dir if process == "Signal" else bkg_data_dir,
@@ -386,6 +386,11 @@ if __name__ == "__main__":
     parser.add_argument("--setup", required=True, help="Path to setup.json file")
     parser.add_argument("--outdir", default="results", help="Directory to save ROOT files")
     parser.add_argument("--save-root", action="store_true", help="Actually write the ROOT file")
+    parser.add_argument(
+        "--main-dir",
+        default="/eos/uscms/store/group/lpchbbrun3/roguljic/hmds/",
+        help="Base directory holding the skim tags.",
+    )
     parser.add_argument(
         "--data-dir", default=None,
         help="Override the full path to the parquet directory for this year (used for both "

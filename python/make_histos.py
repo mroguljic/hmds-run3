@@ -148,7 +148,7 @@ def main(args):
 
     # Backgrounds/data (standard v15 NanoAOD) and Signal (v15_private PFNanoAOD) were skimmed
     # into separate tags/directories, so each process is loaded from its own base directory.
-    MAIN_DIR = "/eos/uscms/store/user/roguljic/lpchmdsrun3/"
+    MAIN_DIR = args.main_dir
     bkg_data_dir = Path(MAIN_DIR) / args.bkg_tag / year
     sig_data_dir = Path(MAIN_DIR) / args.sig_tag / year
 
@@ -322,8 +322,14 @@ if __name__ == "__main__":
         "--outdir", help="Output directory to save histograms.", type=str, default="histograms"
     )
     parser.add_argument(
+        "--main-dir",
+        help="Base directory holding the skim tags.",
+        type=str,
+        default="/eos/uscms/store/group/lpchbbrun3/roguljic/hmds/",
+    )
+    parser.add_argument(
         "--bkg-tag",
-        help="Condor tag (under /eos/uscms/store/user/roguljic/lpchmdsrun3/) holding background/data skims (v15).",
+        help="Condor tag (under --main-dir) holding background/data skims (v15).",
         type=str,
         default="20260721_v15",
     )
