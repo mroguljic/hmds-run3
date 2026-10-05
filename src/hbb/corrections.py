@@ -569,6 +569,10 @@ def add_muon_weights(weights: Weights, year: str, muons: MuonArray, pt_type: str
     if muon_type == "loose":
         id_key = "NUM_LooseID_DEN_TrackerMuons"
         iso_key = "NUM_LoosePFIso_DEN_LooseID"
+    elif muon_type == "medium":
+        # matches objects.py::loose_muons (mediumId, pfIsoId >= 3)
+        id_key = "NUM_MediumID_DEN_TrackerMuons"
+        iso_key = "NUM_MediumPFIso_DEN_MediumID"
     elif muon_type == "highpt":
         id_key = "NUM_HighPtID_DEN_TrackerMuons"
         iso_key = "NUM_LooseRelTkIso_DEN_HighPtID"  #TODO double check

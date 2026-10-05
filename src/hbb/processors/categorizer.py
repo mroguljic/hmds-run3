@@ -39,8 +39,13 @@ from .GenSelection import (
     gen_selection_V,
     gen_selection_Vg,
     getBosons,
+    sv_gen_matched,
+    top_merging_category,
+    weak_hf_hadrons,
 )
 from .objects import (
+    SV_VARIATIONS,
+    delta_r_eta_phi,
     good_ak4jets,
     good_ak8jets,
     good_electrons,
@@ -49,6 +54,7 @@ from .objects import (
     good_photons,
     set_ak4jets,
     set_ak8jets,
+    sv_quality_mask,
     tight_photons,
 )
 
@@ -149,6 +155,32 @@ def get_BDT_model(BDT_file: str):
 
 
 class categorizer(SkimmerABC):
+    # control-tt: number of probe-jet SVs (all, highest dlenSig first) saved with per-SV properties
+    N_PROBE_SVS = 8
+    # control-tt columns kept for the JES/JER/UES/muon-pt shifted skims (plus the trigger bits)
+    TT_SHIFT_COLUMNS = (
+        "GenFlavor",
+        "FatJet0_pt",
+        "FatJet0_eta",
+        "FatJet0_msd",
+        "FatJet0_msdmatched",
+        "FatJet0_nSV",
+        "FatJet0_nSVall",
+        "FatJet0_pnetTXbb",
+        "FatJet0_ParTPQCD",
+        "FatJet0_ParTPXbbVsQCD",
+        "FatJet0_nGenB",
+        "FatJet0_nGenC",
+        "FatJet0_nSVmatched",
+        "FatJet0_GenTopCat",
+        "MET",
+        "LepW_pt",
+        "LepSideFatJet_pt",
+        "nLepSideBJet",
+        "weight",
+        "genWeight",
+    )
+
     def __init__(
         self,
         year="2022",
@@ -439,16 +471,23 @@ class categorizer(SkimmerABC):
         selection.add("2FJ", ak.num(goodfatjets, axis=1) == 2)
         selection.add("not2FJ", ak.num(goodfatjets, axis=1) != 2)
 
-        # Count SVs within dR < 0.8 of each good FatJet, then sort by nSV desc (tiebreak: pt desc)
+        # Count SVs passing the SV definition (objects.py::sv_quality_mask) within dR < 0.8 of each
+        # good FatJet, then sort by nSV desc (tiebreak: pt desc).
         # Use ak.cartesian to avoid metric_table, which calls delta_r on SecondaryVertexArray
         # and fails during dask typetracer meta-inference (SV is not a vector.Vector)
         fj_sv_pairs = ak.cartesian({"fj": goodfatjets, "sv": events.SV}, axis=1, nested=True)
-        deta = fj_sv_pairs["fj"].eta - fj_sv_pairs["sv"].eta
-        dphi = fj_sv_pairs["fj"].phi - fj_sv_pairs["sv"].phi
-        dphi = (dphi + np.pi) % (2 * np.pi) - np.pi
-        dR_fj_sv = np.sqrt(deta**2 + dphi**2)
-        nSV_per_jet = ak.sum(dR_fj_sv < 0.8, axis=2)
+        sv_in_fj = (
+            delta_r_eta_phi(
+                fj_sv_pairs["fj"].eta, fj_sv_pairs["fj"].phi, fj_sv_pairs["sv"].eta, fj_sv_pairs["sv"].phi
+            )
+            < 0.8
+        )
+        nSV_per_jet = ak.sum(sv_in_fj & sv_quality_mask(fj_sv_pairs["sv"]), axis=2)
         goodfatjets["nSV"] = nSV_per_jet
+        for sv_var, (min_ntracks, min_dlensig) in SV_VARIATIONS.items():
+            goodfatjets[sv_var] = ak.sum(
+                sv_in_fj & sv_quality_mask(fj_sv_pairs["sv"], min_ntracks, min_dlensig), axis=2
+            )
         sv_sort_key = ak.values_astype(nSV_per_jet, np.float32) * 1e5 + goodfatjets.pt
         svfatjets = goodfatjets[ak.argsort(sv_sort_key, axis=1, ascending=False)]
 
@@ -570,6 +609,45 @@ class categorizer(SkimmerABC):
         )
         selection.add("muonDphiAK8", abs(ttbarmuon.delta_phi(candidatejet)) > 2 * np.pi / 3)
 
+        # ttbar CR (control-tt) probe: max-nSV AK8 jet on the hadronic side (dphi(muon) > 2pi/3).
+        # Restricting the candidates *before* picking keeps events where a leptonic-side AK8 jet
+        # (boosted b from t -> b mu nu) has more SVs; picking first and then cutting on dphi
+        # (muonDphiAK8) would veto them and bias the probe nSV spectrum.
+        muon_phi = ak.fill_none(ttbarmuon.phi, np.nan)  # nan: no hadronic/leptonic side
+        dphi_fj_muon = abs((svfatjets.phi - muon_phi + np.pi) % (2 * np.pi) - np.pi)
+        probejet = ak.firsts(svfatjets[dphi_fj_muon > 2 * np.pi / 3][:, 0:1])
+        # leading leptonic-side AK8 pt, to check whether that jet could fire the AK8 jet triggers
+        lepside_fatjet_pt = ak.fill_none(
+            ak.max(svfatjets[dphi_fj_muon <= 2 * np.pi / 3].pt, axis=1), 0.0
+        )
+
+        probe_phi = ak.fill_none(probejet.phi, np.nan)
+        ak4_lepside = goodjets[
+            abs((goodjets.phi - probe_phi + np.pi) % (2 * np.pi) - np.pi) > np.pi / 2
+        ]
+        lepbjet = ak.firsts(
+            ak4_lepside[ak.argmax(getattr(ak4_lepside, self._btagger), axis=1, keepdims=True)]
+        )
+        n_ak4_lepside_btag = ak.sum(getattr(ak4_lepside, self._btagger) > self._btag_cut, axis=1)
+
+        mu_pt = ak.fill_none(getattr(ttbarmuon, self._mupt_type), 0.0)
+        lepw_px = mu_pt * np.cos(ak.fill_none(ttbarmuon.phi, 0.0)) + met.pt * np.cos(met.phi)
+        lepw_py = mu_pt * np.sin(ak.fill_none(ttbarmuon.phi, 0.0)) + met.pt * np.sin(met.phi)
+        lepw_pt = np.sqrt(lepw_px**2 + lepw_py**2)
+
+        selection.add("probejetkin", ak.fill_none(probejet.pt > 0, False))  # pt/eta from good_ak8jets
+        selection.add("ttlepbtag", n_ak4_lepside_btag >= 1)
+        selection.add("ttmet", met.pt > 50.0)
+
+        # all SVs within dR < 0.8 of the SR candidate / CR probe, highest dlenSig first
+        def svs_in_jet(jet):
+            jet_eta, jet_phi = ak.fill_none(jet.eta, np.nan), ak.fill_none(jet.phi, np.nan)
+            svs = events.SV[delta_r_eta_phi(events.SV.eta, events.SV.phi, jet_eta, jet_phi) < 0.8]
+            return svs[ak.argsort(svs.dlenSig, axis=1, ascending=False)]
+
+        candidate_svs = svs_in_jet(candidatejet)
+        probe_svs = svs_in_jet(probejet)
+
         goodphotons = good_photons(events.Photon)
         nphotons = ak.num(goodphotons, axis=1)
 
@@ -650,9 +728,13 @@ class categorizer(SkimmerABC):
             selection.add("BDTisggF", (bdt_scores == 2))
 
         gen_variables = {}
+        gen_jet_sr = {}
+        gen_jet_tt = {}
         btag_SF = ak.ones_like(events.run)
+        btag_SF_mu = ak.ones_like(events.run)
         if isRealData:
             genflavor = ak.zeros_like(candidatejet.pt)
+            genflavor_probe = ak.zeros_like(probejet.pt)
             genBosonPt = ak.zeros_like(candidatejet.pt)
         else:
 
@@ -663,7 +745,7 @@ class categorizer(SkimmerABC):
             )
             # muon region
             btag_SF_mu = self.add_region_weights(
-                "control-tt", weights, events, btag_jets=ak4_outside_ak8, muons=ttbarmuon_sf, muon_type="loose"
+                "control-tt", weights, events, btag_jets=ak4_lepside, muons=ttbarmuon_sf, muon_type="medium"
             )
             # gamma region
             btag_SF_gamma = self.add_region_weights(
@@ -685,16 +767,42 @@ class categorizer(SkimmerABC):
                     gen_variables = gen_func(events, goodfatjets)
 
             bosons = getBosons(events.GenPart)
-            matchedBoson = candidatejet.nearest(bosons, axis=None, threshold=0.8)
-            match_mask = (abs(candidatejet.pt - matchedBoson.pt) / matchedBoson.pt < 0.5) & (
-                abs(candidatejet.msd - matchedBoson.mass) / matchedBoson.mass < 0.3
-            )
-            selmatchedBoson = ak.mask(matchedBoson, match_mask)
-            genflavor = bosonFlavor(selmatchedBoson)
+
+            def boson_flavor(jet):
+                matchedBoson = jet.nearest(bosons, axis=None, threshold=0.8)
+                match_mask = (abs(jet.pt - matchedBoson.pt) / matchedBoson.pt < 0.5) & (
+                    abs(jet.msd - matchedBoson.mass) / matchedBoson.mass < 0.3
+                )
+                return bosonFlavor(ak.mask(matchedBoson, match_mask))
+
+            genflavor = boson_flavor(candidatejet)
+            genflavor_probe = boson_flavor(probejet)
             genBosonPt = ak.fill_none(ak.firsts(bosons.pt), 0)
+
+            # heavy-flavour content and SV gen-matching for the per-SV nSV scale factor model
+            hadrons_b, hadrons_c_prompt, hadrons_c = weak_hf_hadrons(events.GenPart)
+
+            def gen_jet_content(jet, jet_svs):
+                jet_eta, jet_phi = ak.fill_none(jet.eta, np.nan), ak.fill_none(jet.phi, np.nan)
+                sv_matched = sv_gen_matched(jet_svs, (hadrons_b, hadrons_c))
+
+                def n_in_jet(hadrons):
+                    return ak.sum(delta_r_eta_phi(hadrons.eta, hadrons.phi, jet_eta, jet_phi) < 0.8, axis=1)
+
+                content = {
+                    "FatJet0_nGenB": n_in_jet(hadrons_b),
+                    "FatJet0_nGenC": n_in_jet(hadrons_c_prompt),
+                    "FatJet0_nSVmatched": ak.sum(sv_matched & sv_quality_mask(jet_svs), axis=1),
+                    "FatJet0_GenTopCat": top_merging_category(jet_eta, jet_phi, events.GenPart),
+                }
+                return content, sv_matched
+
+            gen_jet_sr, _ = gen_jet_content(candidatejet, candidate_svs)
+            gen_jet_tt, probe_sv_matched = gen_jet_content(probejet, probe_svs)
 
         # softdrop mass, 0 for genflavor == 0
         msd_matched = candidatejet.msd * (genflavor > 0) + candidatejet.msd * (genflavor == 0)
+        msd_matched_probe = probejet.msd * (genflavor_probe > 0) + probejet.msd * (genflavor_probe == 0)
 
         regions = {
             "signal-all": [
@@ -741,6 +849,21 @@ class categorizer(SkimmerABC):
             #     "noleptons",
             #     "isvbf",
             # ],
+            # ttbar (mu+jets) CR for the trigger / nSV / anti-QCD scale factors.
+            # Jet triggers are not required (per-path bits are saved); loose probe kinematics
+            # (good_ak8jets: pt > 200) so the trigger turn-on is visible.
+            "control-tt": [
+                "muontrigger",
+                "lumimask",
+                "metfilter",
+                "ak4jetveto",
+                "onemuon",
+                "muonkin",
+                "probejetkin",
+                "ttlepbtag",
+                "ttmet",
+            ],
+            # H->bb version, probe picked over all AK8 jets before the dphi cut:
             # "control-tt": [
             #     "muontrigger",
             #     "lumimask",
@@ -793,6 +916,7 @@ class categorizer(SkimmerABC):
         tic = time.time()
 
         nominal_weight = ak.ones_like(events.run) if isRealData else weights_dict["weight"]
+        nominal_weight_tt = ak.ones_like(events.run) if isRealData else weights_dict_mu["weight"]
         gen_weight = ak.ones_like(events.run) if isRealData else events.genWeight
 
         egamma_trigger_booleans = {}
@@ -801,6 +925,14 @@ class categorizer(SkimmerABC):
                 egamma_trigger_booleans[t] = events.HLT[t]
             else:
                 egamma_trigger_booleans[t] = ak.values_astype(ak.zeros_like(events.run), bool)
+
+        # per-path jet (and reference muon) trigger bits, for the trigger efficiency in control-tt
+        trigger_booleans = {}
+        for t in self._triggers[self._year] + self._muontriggers[self._year]:
+            if t in events.HLT.fields:
+                trigger_booleans[t] = events.HLT[t]
+            else:
+                trigger_booleans[t] = ak.values_astype(ak.zeros_like(events.run), bool)
 
         if self._btag_eff:
             cut = selection.all(*btag_eff_cuts)
@@ -828,6 +960,7 @@ class categorizer(SkimmerABC):
                 "FatJet0_phi": candidatejet.phi,
                 "FatJet0_eta": candidatejet.eta,
                 "FatJet0_nSV": candidatejet.nSV,
+                **{f"FatJet0_{sv_var}": candidatejet[sv_var] for sv_var in SV_VARIATIONS},
                 "FatJet0_msd": candidatejet.msd,
                 "FatJet0_mass": candidatejet.mass,
                 "FatJet0_msdmatched": msd_matched,
@@ -844,6 +977,7 @@ class categorizer(SkimmerABC):
                 "FatJet1_phi": subleadingjet.phi,
                 "FatJet1_eta": subleadingjet.eta,
                 "FatJet1_nSV": subleadingjet.nSV,
+                "FatJet1_nSVall": subleadingjet.nSVall,
                 "FatJet1_msd": subleadingjet.msd,
                 "FatJet1_pnetMass": subleadingjet.pnetmass,
                 "FatJet1_pnetTXbb": subleadingjet.particleNet_XbbVsQCD,
@@ -859,7 +993,9 @@ class categorizer(SkimmerABC):
                 "weight": nominal_weight,
                 "genWeight": gen_weight,
                 **gen_variables,
+                **gen_jet_sr,
                 **egamma_trigger_booleans,
+                **trigger_booleans,
             }
             if self._evaluate_BDT:
                 output_array.update({"BDT_score": bdt_scores})
@@ -890,6 +1026,7 @@ class categorizer(SkimmerABC):
                 "FatJet0_msd": candidatejet.msd,
                 "FatJet0_msdmatched": msd_matched,
                 "FatJet0_nSV": candidatejet.nSV,
+                "FatJet0_nSVall": candidatejet.nSVall,
                 "FatJet0_pnetTXbb": candidatejet.particleNet_XbbVsQCD,
                 "FatJet0_pnetTXcc": candidatejet.particleNet_XccVsQCD,
                 "FatJet0_pnetXbbXcc": candidatejet.pnetXbbXcc,
@@ -973,7 +1110,80 @@ class categorizer(SkimmerABC):
                 "JetClosestFatJet0_mass": ak4_closest_ak8.mass,
             }
 
-        def skim(region, output_array):
+            # control-tt: the probe jet is saved under the FatJet0_ names used for the SR candidate
+            probe_svs_padded = ak.pad_none(probe_svs, self.N_PROBE_SVS, axis=1, clip=True)
+            probe_sv_array = {
+                f"FatJet0_SV{i}_{var}": probe_svs_padded[var][:, i]
+                for i in range(self.N_PROBE_SVS)
+                for var in ("ntracks", "dlenSig", "mass", "pt", "dxy")
+            }
+            if not isRealData:
+                probe_sv_matched_padded = ak.pad_none(probe_sv_matched, self.N_PROBE_SVS, axis=1, clip=True)
+                probe_sv_array.update(
+                    {
+                        f"FatJet0_SV{i}_genMatched": probe_sv_matched_padded[:, i]
+                        for i in range(self.N_PROBE_SVS)
+                    }
+                )
+
+            output_array_tt = {
+                "event": events.event,
+                "GenFlavor": genflavor_probe,
+                "nFatJet": ak.num(goodfatjets, axis=1),
+                "nJet": ak.num(goodjets, axis=1),
+                "FatJet0_pt": probejet.pt,
+                "FatJet0_phi": probejet.phi,
+                "FatJet0_eta": probejet.eta,
+                "FatJet0_nSV": probejet.nSV,
+                **{f"FatJet0_{sv_var}": probejet[sv_var] for sv_var in SV_VARIATIONS},
+                "FatJet0_msd": probejet.msd,
+                "FatJet0_mass": probejet.mass,
+                "FatJet0_msdmatched": msd_matched_probe,
+                "FatJet0_n2b1": probejet.n2b1,
+                "FatJet0_n3b1": probejet.n3b1,
+                "FatJet0_pnetMass": probejet.pnetmass,
+                "FatJet0_pnetTXbb": probejet.particleNet_XbbVsQCD,
+                "FatJet0_pnetTXcc": probejet.particleNet_XccVsQCD,
+                "FatJet0_pnetTXqq": probejet.particleNet_XqqVsQCD,
+                "FatJet0_pnetTQCD": probejet.particleNet_QCD,
+                **probe_sv_array,
+                **gen_jet_tt,
+                "LepSideFatJet_pt": lepside_fatjet_pt,
+                "Muon0_pt": getattr(ttbarmuon, self._mupt_type),
+                "Muon0_eta": ttbarmuon.eta,
+                "Muon0_phi": ttbarmuon.phi,
+                "MET": met.pt,
+                "MET_phi": met.phi,
+                "LepW_pt": lepw_pt,
+                "LepBJet_pt": lepbjet.pt,
+                "LepBJet_eta": lepbjet.eta,
+                "LepBJet_phi": lepbjet.phi,
+                "LepBJet_btag": getattr(lepbjet, self._btagger),
+                "nLepSideBJet": n_ak4_lepside_btag,
+                **trigger_booleans,
+                "weight": nominal_weight_tt,
+                "genWeight": gen_weight,
+            }
+            if "v12" not in self._nano_version:
+                output_array_tt.update(
+                    {
+                        "FatJet0_ParTPQCD": probejet.ParTPQCD,
+                        "FatJet0_ParTPXbb": probejet.ParTPXbb,
+                        "FatJet0_ParTPXcc": probejet.ParTPXcc,
+                        "FatJet0_ParTPXqq": probejet.ParTPXqq,
+                        "FatJet0_ParTPXbbVsQCD": probejet.ParTPXbbVsQCD,
+                        "FatJet0_ParTmassGeneric": probejet.ParTmassGeneric,
+                        "FatJet0_ParTmassX2p": probejet.ParTmassX2p,
+                    }
+                )
+            # reduced control-tt array for energy variation shifts
+            energy_var_array_tt = {
+                k: v
+                for k, v in output_array_tt.items()
+                if k in self.TT_SHIFT_COLUMNS or k in trigger_booleans
+            }
+
+        def skim(region, output_array, region_weight, region_genflavor, region_btag_SF):
             selections = regions[region]
             cut = selection.all(*selections)
 
@@ -1009,9 +1219,9 @@ class categorizer(SkimmerABC):
                 output["cutflow"].fill(
                     dataset=dataset,
                     region=region,
-                    genflavor=self.normalize(genflavor, None),
+                    genflavor=self.normalize(region_genflavor, None),
                     cut=0,
-                    weight=nominal_weight,
+                    weight=region_weight,
                 )
                 for i, cut in enumerate(selections):
                     allcuts.add(cut)
@@ -1019,29 +1229,47 @@ class categorizer(SkimmerABC):
                     output["cutflow"].fill(
                         dataset=dataset,
                         region=region,
-                        genflavor=self.normalize(genflavor, cumulative_cut),
+                        genflavor=self.normalize(region_genflavor, cumulative_cut),
                         cut=i + 1,
-                        weight=nominal_weight[cumulative_cut],
+                        weight=region_weight[cumulative_cut],
                     )
 
                 # Fill btag SF hist
                 cut = selection.all(*selections)
-                output["btagWeight"].fill(val=self.normalize(btag_SF, cut))
+                output["btagWeight"].fill(val=self.normalize(region_btag_SF, cut))
 
         if self._save_skim:
-            if shift_name == "nominal":
-                for region in regions:
-                    if isRealData:
-                        skim(region, ak.zip({**output_array, **output_array_extra}, depth_limit=1))
-                    else:
-                        skim(region, ak.zip({**output_array, **output_array_extra, **weights_dict}, depth_limit=1))
-
-            else:  # energy variation shift case
-                for region in regions:
-                    if isRealData:
-                        skim(region, ak.zip(energy_var_array, depth_limit=1))
-                    else:
-                        skim(region, ak.zip({**energy_var_array, **weights_dict}, depth_limit=1))
+            # per region: (nominal columns, energy-shift columns, weights, nominal weight, genflavor, btag SF)
+            sr_arrays = (
+                {**output_array, **output_array_extra},
+                energy_var_array,
+                {} if isRealData else weights_dict,
+                nominal_weight,
+                genflavor,
+                btag_SF,
+            )
+            region_arrays = {
+                "control-tt": (
+                    output_array_tt,
+                    energy_var_array_tt,
+                    {} if isRealData else weights_dict_mu,
+                    nominal_weight_tt,
+                    genflavor_probe,
+                    btag_SF_mu,
+                ),
+            }
+            for region in regions:
+                nominal_arr, shift_arr, region_weights, region_weight, region_genflavor, region_btag_SF = (
+                    region_arrays.get(region, sr_arrays)
+                )
+                arr = nominal_arr if shift_name == "nominal" else shift_arr
+                skim(
+                    region,
+                    ak.zip({**arr, **region_weights}, depth_limit=1),
+                    region_weight,
+                    region_genflavor,
+                    region_btag_SF,
+                )
 
         toc = time.time()
         output["filltime"] = toc - tic

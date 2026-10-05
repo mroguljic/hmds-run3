@@ -193,3 +193,31 @@ def set_ak8jets(fatjets: FatJetArray, isRealData: bool, year: str, nano_version:
 def good_ak8jets(fatjets: FatJetArray):
     sel = fatjets.jetidtight & (fatjets.pt > 200) & (abs(fatjets.eta) < 2.5)
     return fatjets[sel]
+
+
+# SV definition used for the nSV count (studies/nsv_optimization).
+# NanoAOD SVs already have >= 2 tracks and dlenSig > 3, so (2, 0) means no extra cut.
+SV_MIN_NTRACKS = 3
+SV_MIN_DLENSIG = 4.0
+
+# alternative definitions saved alongside the nominal one, as (min. ntracks, min. dlenSig)
+SV_VARIATIONS = {
+    "nSVall": (2, 0.0),
+    "nSV_ntrk3": (3, 0.0),
+    "nSV_dls4": (2, 4.0),
+    "nSV_ntrk3dls6": (3, 6.0),
+    "nSV_ntrk3dls10": (3, 10.0),
+}
+
+
+def sv_quality_mask(svs, min_ntracks=SV_MIN_NTRACKS, min_dlensig=SV_MIN_DLENSIG):
+    return (svs.ntracks >= min_ntracks) & (svs.dlenSig > min_dlensig)
+
+
+def delta_r_eta_phi(eta1, phi1, eta2, phi2):
+    """
+    dR from eta/phi fields, for collections without vector behaviour (e.g. SV, which breaks
+    metric_table/delta_r during dask meta-inference)
+    """
+    dphi = (phi1 - phi2 + np.pi) % (2 * np.pi) - np.pi
+    return np.sqrt((eta1 - eta2) ** 2 + dphi**2)

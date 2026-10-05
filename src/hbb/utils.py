@@ -44,6 +44,18 @@ def add_selection(
     )
 
 
+def check_sv_definition(parquet_file) -> None:
+    """
+    Raise if a skim predates the SV definition change (FatJet0_nSV = all SVs, no FatJet0_nSVall column),
+    since common_vars.NSV_MIN would then silently be applied to the old count.
+    """
+    if "FatJet0_nSVall" not in pq.read_schema(parquet_file).names:
+        raise RuntimeError(
+            f"{parquet_file} predates the SV definition ntracks >= 3 & dlenSig > 4: FatJet0_nSV counts all "
+            "SVs, so the nSV > NSV_MIN working point does not apply. Use a skim made after the change."
+        )
+
+
 def check_selector(sample: str, selector: str | list[str]):
     if not isinstance(selector, (list, tuple)):
         selector = [selector]

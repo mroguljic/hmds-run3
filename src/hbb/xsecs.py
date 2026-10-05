@@ -73,15 +73,18 @@ xsecs["WZto4Q-1Jets-4FS"] = 0
 
 # SingleTop
 # https://twiki.cern.ch/twiki/bin/view/LHCPhysics/SingleTopNNLORef#Single_top_quark_tW_channel_cros
-xsecs["TWminusto4Q"] = 87.9 / 2 * 0.667 * BR_WQQ
-xsecs["TWminusto2L2Nu"] = 87.9 / 2 * 0.333 * BR_WLNU
-xsecs["TWminustoLNu2Q"] = 87.9 / 2 * (0.667 * BR_WQQ + 0.333 * BR_WLNU)
-xsecs["TbarWplusto4Q"] = 87.9 / 2 * 0.667 * BR_WQQ
-xsecs["TbarWplustoLNu2Q"] = 87.9 / 2 * 0.333 * BR_WLNU
-xsecs["TbarWplusto2L2Nu"] = 87.9 / 2 * (0.667 * BR_WQQ + 0.333 * BR_WLNU)
+# two W bosons (t -> bW and the associated W): 4Q = qq*qq, LNu2Q = 2 * lnu*qq, 2L2Nu = lnu*lnu
+xsecs["TWminusto4Q"] = 87.9 / 2 * BR_WQQ * BR_WQQ
+xsecs["TWminusto2L2Nu"] = 87.9 / 2 * BR_WLNU * BR_WLNU
+xsecs["TWminustoLNu2Q"] = 87.9 / 2 * 2 * BR_WQQ * BR_WLNU
+xsecs["TbarWplusto4Q"] = 87.9 / 2 * BR_WQQ * BR_WQQ
+xsecs["TbarWplustoLNu2Q"] = 87.9 / 2 * 2 * BR_WQQ * BR_WLNU
+xsecs["TbarWplusto2L2Nu"] = 87.9 / 2 * BR_WLNU * BR_WLNU
 # https://twiki.cern.ch/twiki/bin/view/LHCPhysics/SingleTopNNLORef#Single_top_t_channel
 xsecs["TbarBQ_t-channel_4FS"] = 87.2
 xsecs["TBbarQ_t-channel_4FS"] = 145.0
+xsecs["TbarBQtoLNu-t-channel-4FS"] = 87.2 * BR_WLNU
+xsecs["TBbarQtoLNu-t-channel-4FS"] = 145.0 * BR_WLNU
 
 # Higgs
 xsecs["GluGluHto2B_M-125"] = 51.53 * BR_HBB  # 29.93

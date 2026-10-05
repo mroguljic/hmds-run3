@@ -11,6 +11,7 @@ from coffea.nanoevents.methods.base import NanoEventsArray
 from coffea.nanoevents.methods.nanoaod import FatJetArray
 
 from ..utils import P4
+from .objects import delta_r_eta_phi
 
 d_PDGID = 1
 u_PDGID = 2
@@ -55,6 +56,74 @@ def bosonFlavor(bosons):
         + ak.all(childid < 4, axis=-1) * 1
     )
     return ak.fill_none(genflavor, 0)
+
+
+def has_flavour(pdgId, flavour: int):
+    """True for hadrons containing a quark of the given flavour (meson xyz / baryon wxyz PDG codes)"""
+    absid = abs(pdgId)
+    return (absid > 100) & (((absid // 100) % 10 == flavour) | ((absid // 1000) % 10 == flavour))
+
+
+def weak_hf_hadrons(genparticles):
+    """
+    Weakly decaying B and C hadrons, i.e. with no same-flavour hadron among their children
+    (NanoAOD keeps all B/C hadrons in GenPart).
+    Returns (B hadrons, C hadrons not from a B decay, all C hadrons).
+    """
+    pdg = genparticles.pdgId
+    child_pdg = genparticles.children.pdgId
+    weak_b = has_flavour(pdg, b_PDGID) & ~ak.fill_none(
+        ak.any(has_flavour(child_pdg, b_PDGID), axis=-1), False
+    )
+    weak_c = has_flavour(pdg, c_PDGID) & ~ak.fill_none(
+        ak.any(has_flavour(child_pdg, c_PDGID), axis=-1), False
+    )
+    hadrons_c = genparticles[weak_c]
+
+    # walk up B -> (D**) -> D* -> D chains
+    from_b = hadrons_c.pt < 0
+    parent = hadrons_c
+    for _ in range(4):
+        parent = parent.parent
+        from_b = from_b | ak.fill_none(has_flavour(parent.pdgId, b_PDGID), False)
+
+    return genparticles[weak_b], hadrons_c[~from_b], hadrons_c
+
+
+def sv_gen_matched(svs, hadron_collections, max_dr=0.1):
+    """
+    Per-SV flag: SV direction within max_dr of any hadron in hadron_collections.
+    0.1 keeps ~82% (ttbar) / ~88% (signal) of SVs with ntracks >= 3 & dlenSig > 4, with a flat tail beyond.
+    """
+    matched = svs.pt < 0
+    for hadrons in hadron_collections:
+        pairs = ak.cartesian({"sv": svs, "h": hadrons}, axis=1, nested=True)
+        dr = delta_r_eta_phi(pairs["sv"].eta, pairs["sv"].phi, pairs["h"].eta, pairs["h"].phi)
+        matched = matched | ak.any(dr < max_dr, axis=2)
+    return matched
+
+
+def top_merging_category(jet_eta, jet_phi, genparticles):
+    """
+    Which hard-process top/W decay quarks are inside the jet (dR < 0.8):
+    3 = top-merged (b + 2 W quarks), 2 = b + 1 W quark, 1 = W-merged (2 W quarks, no b), 0 = other.
+    b quarks count only if their parent is a top; W quarks count for any W (incl. the extra W in tW).
+    """
+    quarks = genparticles[
+        (abs(genparticles.pdgId) <= b_PDGID)
+        & genparticles.hasFlags(["fromHardProcess", "isFirstCopy"])
+    ]
+    # distinctParent is None for incoming partons; unfilled Nones would be kept by the masks below
+    parent_id = ak.fill_none(abs(quarks.distinctParent.pdgId), 0)
+    in_jet = delta_r_eta_phi(quarks.eta, quarks.phi, jet_eta, jet_phi) < 0.8
+    n_b = ak.sum(in_jet & (abs(quarks.pdgId) == b_PDGID) & (parent_id == TOP_PDGID), axis=1)
+    n_wq = ak.sum(in_jet & (parent_id == W_PDGID), axis=1)
+
+    return (
+        3 * ((n_b >= 1) & (n_wq >= 2))
+        + 2 * ((n_b >= 1) & (n_wq == 1))
+        + 1 * ((n_b == 0) & (n_wq >= 2))
+    )
 
 
 def gen_selection_Hbb(

@@ -78,6 +78,15 @@ data_by_year_muon = {
     "2022EE": {"Muon_Run2022E", "Muon_Run2022F", "Muon_Run2022G"},
     "2023": {"Muon_Run2023Cv1", "Muon_Run2023Cv2", "Muon_Run2023Cv3", "Muon_Run2023Cv4"},
     "2023BPix": {"Muon_Run2023D"},
+    "2024": {
+        "Muon_Run2024C",
+        "Muon_Run2024D",
+        "Muon_Run2024E",
+        "Muon_Run2024F",
+        "Muon_Run2024G",
+        "Muon_Run2024H",
+        "Muon_Run2024I",
+    },
 }
 
 # --- ADDED for control-zgamma region ---
