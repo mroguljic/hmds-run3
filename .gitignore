@@ -29,3 +29,5 @@ plots/
 .vscode/
 condor/
 !src/condor/
+HbbRun3.pdf
+histograms/*
