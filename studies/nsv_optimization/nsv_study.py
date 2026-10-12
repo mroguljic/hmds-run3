@@ -428,13 +428,13 @@ def run_analyze(args):
     # ---- sv_definition: ROC curves for SV definitions ------------------------
     kk = np.arange(0, 15)
     fig, ax = plt.subplots(figsize=(11, 9))
-    for d in args.roc_defs:
+    for i, d in enumerate(args.roc_defs):
         if d not in params:
             continue
         es = np.array([eff(d, "Signal", k, cc) for k in kk])
         eb = np.array([eff(d, "QCD", k, cc) for k in kk])
         good = (eb > 0) & (np.array([raw_qcd(d, k, cc) for k in kk]) >= args.min_mc)
-        ax.plot(es[good], eb[good], "o-" if d == cd else "o--", ms=4, lw=3 if d == cd else 1.5,
+        ax.plot(es[good], eb[good], "o-" if d == cd else "o--", ms=4, lw=3 if d == cd else 1.5, color=plt.cm.tab10(i % 10),
                 label=d.replace(">", " > ").replace("&", ", "))
         if d == cd:
             for k in kk[good]:
@@ -657,10 +657,10 @@ def main():
         p.add_argument("--fit-setup", default=str(REPO / "fitting" / "setup_sr.json"),
                        help="pT bins and msd binning are taken from here")
         p.add_argument("--ntrk-grid", type=int, nargs="+", default=[2, 3, 4], help="min. SV ntracks (2 = no cut)")
-        p.add_argument("--dlensig-grid", type=float, nargs="+", default=[0, 4, 5, 6],
+        p.add_argument("--dlensig-grid", type=float, nargs="+", default=[0, 4, 5, 6, 10],
                        help="min. SV dlenSig (0 = no cut; NanoAOD already requires > 3)")
         p.add_argument("--roc-defs", nargs="+",
-                       default=["all SVs", "ntrk>2", "dlenSig>4", "ntrk>2&dlenSig>4", "ntrk>2&dlenSig>6", "ntrk>3"],
+                       default=["all SVs", "ntrk>2", "dlenSig>4", "ntrk>2&dlenSig>4", "ntrk>2&dlenSig>6", "ntrk>2&dlenSig>10", "ntrk>3"],
                        help="SV definitions drawn in sv_definition")
         p.add_argument("--pqcd-grid", type=float, nargs="+", default=[0.025, 0.05, 0.075, 0.1, 0.15, 0.2],
                        help="P(QCD) cuts in joint_map")
