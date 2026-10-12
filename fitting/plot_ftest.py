@@ -52,7 +52,7 @@ def calculate_f_statistic(chi2_null, chi2_alt, p1, p2, nbins):
     return f_val
 
 
-def main(tag, nbins, p1, p2):
+def main(tag, nbins, p1, p2, title=None):
     suffix = f"_{tag}" if tag else ""
     print(f"--- F-Test Analysis for {tag} ---")
 
@@ -162,8 +162,13 @@ def main(tag, nbins, p1, p2):
     ax.set_ylabel("Pseudo-experiments", fontsize=18)
     ax.legend(loc="best", fontsize=14, frameon=True)
 
-    # CMS Label
-    hep.cms.label(data=True, label="Preliminary", year=tag, ax=ax)
+    # CMS Label. `tag` names the order comparison, not a year - passing it as year=
+    # collided with the CMS header text. It goes in the axes title instead.
+    hep.cms.label("WiP", data=True, com=13.6, ax=ax)
+    if title is None:
+        title = tag.replace("_", " ")
+    if title:
+        ax.set_title(title, fontsize=12, loc="center", pad=18)
 
     outname = f"ftest_fstat_{tag}.png"
     plt.savefig(outname)
@@ -179,6 +184,8 @@ if __name__ == "__main__":
     # Add these two lines:
     parser.add_argument("--p1", required=True, type=int, help="Params in Null Model")
     parser.add_argument("--p2", required=True, type=int, help="Params in Alt Model")
+    parser.add_argument("--title", default=None,
+                        help="Axes title (default: the tag); pass '' for no title")
 
     args = parser.parse_args()
-    main(args.tag, args.nbins, args.p1, args.p2)
+    main(args.tag, args.nbins, args.p1, args.p2, args.title)

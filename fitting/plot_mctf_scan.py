@@ -45,6 +45,9 @@ def main():
     p.add_argument("--setup", default="setup_sr.json")
     p.add_argument("--orders", default="0,0;1,0;1,1;2,0;2,1",
                     help="semicolon-separated 'mc_pt,mc_rho' list, e.g. '0,0;1,0;2,0'")
+    p.add_argument("--ylim", default=None,
+                    help="'ymin,ymax' for the pass/fail axis (default: autoscale, top=0.4)")
+    p.add_argument("--outname", default="MCTF_scan", help="output file stem")
     a = p.parse_args()
 
     with (FITTING_DIR / a.setup).open() as f:
@@ -131,14 +134,17 @@ def main():
                     ax.plot(msd_centers[m], mctf[ptbin][m], ls, color=color, lw=2, label=lbl)
                 ax.set_title(f"$p_T$ {ptbins[ptbin]:.0f}–{ptbins[ptbin + 1]:.0f} GeV", fontsize=12)
                 ax.set_xlabel(r"$m_{sd}$ [GeV]")
-                ax.set_ylim(top=0.4)
+                if a.ylim:
+                    ax.set_ylim(*(float(x) for x in a.ylim.split(",")))
+                else:
+                    ax.set_ylim(top=0.4)
                 ax.legend(fontsize=7, loc="best", ncol=2)
 
             axes[0].set_ylabel("Pass / Fail")
             hep.cms.text("WiP", ax=axes[0], fontsize=13)
             fig.tight_layout()
             for ext in ("png", "pdf"):
-                out = outdir / f"MCTF_scan.{ext}"
+                out = outdir / f"{a.outname}.{ext}"
                 fig.savefig(out, dpi=120, bbox_inches="tight")
                 print(f"  saved {out}")
             plt.close(fig)

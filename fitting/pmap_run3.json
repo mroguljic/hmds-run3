@@ -126,6 +126,8 @@
     "singlet": [
         "TbarBQ_t-channel_4FS",
         "TBbarQ_t-channel_4FS",
+        "TbarBQtoLNu-t-channel-4FS",
+        "TBbarQtoLNu-t-channel-4FS",
         "TbarWplusto4Q",
         "TbarWplustoLNu2Q",
         "TbarWplusto2L2Nu",

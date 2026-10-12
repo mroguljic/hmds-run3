@@ -8,6 +8,8 @@ Date: Feb 2026
 
 from __future__ import annotations
 
+import warnings
+from math import comb
 from pathlib import Path
 
 import numpy as np
@@ -47,6 +49,32 @@ def shape_to_num(var, nom, clip=1.5):
         var_rate = 0
 
     return var_rate / nom_rate
+
+
+def shape_to_ratio(var, nom, clip=2.0, min_yield_frac=1e-3):
+    """
+    Per-bin multiplicative effect of a shape variation, for setParamEffect.
+
+    Bins carrying negligible yield are pinned to 1.0. A single MC event crossing a
+    bin edge produces ratios of 10-50 in a near-empty bin, which is noise in the
+    template rather than a real shape effect, and Combine would interpolate it as
+    though it were physics. In the 2024 SR skim the eleven bins with JESUp/nominal
+    above 3 have effective MC entries of 1-2.6 and carry 0.11 events between them.
+
+    `clip` bounds what survives, so one poorly-populated-but-not-negligible bin
+    cannot dominate the morphing.
+    """
+    nom = np.asarray(nom, dtype=float)
+    var = np.asarray(var, dtype=float)
+    effect = np.ones_like(nom)
+
+    total = np.sum(nom)
+    if total <= 0:
+        return effect
+
+    usable = (nom > min_yield_frac * total) & (var > 0)
+    effect[usable] = var[usable] / nom[usable]
+    return np.clip(effect, 1.0 / clip, clip)
 
 
 def get_template(filename, sName, region, ptbin, cat, obs, syst):
@@ -148,6 +176,58 @@ def one_bin(filename, sName, region, ptbin, cat, syst):
     return (np.array([integral]), np.array([0.0, 1.0]), "onebin", np.array([error2]))
 
 
+class MCTFFitResult:
+    """
+    Result of the standalone least-squares MC transfer-factor fit.
+
+    Stands in for the RooFitResult `fit_mc_tf` used to return, carrying the fitted
+    Bernstein coefficients and their covariance. Unlike a RooFit covariance this
+    one is closed form, (A^T W A)^-1, and positive definite by construction.
+    """
+
+    def __init__(self, param_names, values, cov, chi2, ndf):
+        self.param_names = list(param_names)
+        self.values = np.asarray(values, dtype=float)
+        self.cov = np.asarray(cov, dtype=float)
+        self.chi2 = float(chi2)
+        self.ndf = int(ndf)
+
+    def status(self):
+        """0 if the covariance is usable. Mirrors RooFitResult.status() for callers."""
+        return 0 if np.all(np.linalg.eigvalsh(self.cov) > 0) else 1
+
+    @property
+    def errors(self):
+        return np.sqrt(np.diag(self.cov))
+
+    def decorrelate(self, prefix):
+        """
+        Rotate to uncorrelated unit-Gaussian nuisances, as
+        `DecorrelatedNuisanceVector.fromRooFitResult` did, but straight from numpy.
+        """
+        deco = rl.DecorrelatedNuisanceVector(prefix, self.values, self.cov)
+        for p, name in zip(deco.correlated_params, self.param_names):
+            p.name = name
+        return deco
+
+
+def _bernstein_basis(x, n):
+    """Bernstein basis functions of degree n evaluated at x, stacked on a new last axis."""
+    return np.stack([comb(n, k) * x**k * (1 - x) ** (n - k) for k in range(n + 1)], axis=-1)
+
+
+def tf_design_matrix(ptscaled, rhoscaled, order):
+    """
+    Bernstein design matrix for the TF: element [..., i] is the i-th basis function
+    of the flattened (pt, rho) coefficient grid, in the same C-order that
+    `BasisPoly.parameters.reshape(-1)` uses.
+    """
+    basis = np.einsum(
+        "...j,...k->...jk", _bernstein_basis(ptscaled, order[0]), _bernstein_basis(rhoscaled, order[1])
+    )
+    return basis.reshape(ptscaled.shape + (-1,))
+
+
 def fit_mc_tf(
     infile_path,
     qcd_tf_proc,
@@ -160,114 +240,101 @@ def fit_mc_tf(
     rhoscaled,
     validbins,
     order,
-    init_params=None,
-    max_tries=5,
     bin_indices=None,
 ):
     """
-    Fit a Bernstein tf_MCtempl(pt, rho) of the given (pt_order, rho_order) to the
-    QCD MC pass/fail ratio via a standalone RooFit fit. Both the observation and
-    the pdf here are built purely from MC templates (qcd_tf_proc)
+    Fit a Bernstein tf_MCtempl(pt, rho) of the given (pt_order, rho_order) to the raw
+    QCD MC pass/fail ratio by weighted linear least squares.
 
-    Returns (tf_MCtempl, qcdfit, qcdeff, fitted_values) where fitted_values is the
-    fitted Bernstein-coefficient array (same shape as `order`-derived init_params).
+    A Bernstein polynomial is linear in its coefficients, so this is an ordinary
+    weighted least-squares problem: the solution and its covariance (A^T W A)^-1 are
+    closed form, and the covariance is positive definite whenever the design matrix
+    has full rank. The per-bin weights are the MC statistical errors on the ratio
+    from `raw_pass_fail_ratio` (pass and fail are disjoint selections, so treating
+    numerator and denominator as independent is exact to first order).
+
+    This replaces the previous RooFit likelihood fit, whose covariance was unusable
+    here. That fit asked RooFit for `SumW2Error(True)`, which corrects the covariance
+    as V * C^-1 * V with C from a second Hesse on the *weight-squared* likelihood,
+    evaluated at the minimum of the weighted one. Those two minima coincide only when
+    the weights are near 1; the QCD MC weights are not (per-bin sum(w^2)/sum(w) runs
+    0.017-0.245, and the fail channel is saturated, so the two minima sit a factor
+    4-60 apart in every bin). The weight-squared Hessian there is indefinite, Minuit
+    silently repairs it ("MnPosDef Matrix forced pos-def by adding to diagonal"), and
+    inverting the repaired matrix gave TF coefficient errors of ~1e10 instead of
+    ~0.03 - which in turn made every decorrelated nuisance move the pass-region QCD
+    prediction by nine orders of magnitude per sigma, so no toy could be generated.
+    Only `covQual` recorded that anything was wrong, and nothing checked it.
+
+    Returns (tf_MCtempl, fitresult, qcdeff, fitted_values), where fitresult is an
+    MCTFFitResult and fitted_values has the shape of tf_MCtempl.parameters.
     """
-    mc_pt_order, mc_rho_order = order
-    if init_params is None:
-        init_params = np.full((mc_pt_order + 1, mc_rho_order + 1), 1.0)
     if bin_indices is None:
         bin_indices = [ptbin + 1 for ptbin in range(npt)]
 
-    for _attempt in range(max_tries):
-        qcdmodel = rl.Model(f"qcdmodel_{cat}_{reg}")
-        qcdpass, qcdfail = 0.0, 0.0
-
-        for ptbin in range(npt):
-            failCh = rl.Channel(f"ptbin{ptbin}{cat}fail{year}{reg}")
-            passCh = rl.Channel(f"ptbin{ptbin}{cat}pass{year}{reg}")
-            qcdmodel.addChannel(failCh)
-            qcdmodel.addChannel(passCh)
-
-            failTempl = get_template(
-                infile_path, qcd_tf_proc, "fail_", bin_indices[ptbin], cat, msd, "nominal"
-            )
-            passTempl = get_template(
-                infile_path, qcd_tf_proc, f"pass_{reg}_", bin_indices[ptbin], cat, msd, "nominal"
-            )
-
-            failCh.setObservation(failTempl, read_sumw2=True)
-            passCh.setObservation(passTempl, read_sumw2=True)
-            qcdfail += failCh.getObservation()[0].sum()
-            qcdpass += passCh.getObservation()[0].sum()
-
-        qcdeff = qcdpass / qcdfail
-
-        tf_MCtempl = rl.BasisPoly(
-            f"tf_MCtempl_{cat}{reg}{year}",
-            (mc_pt_order, mc_rho_order),
-            ["pt", "rho"],
-            basis="Bernstein",
-            init_params=init_params,
-            limits=(0, 10),
+    # Inclusive pass/fail efficiency, over all bins (the TF carries the shape).
+    qcdpass, qcdfail = 0.0, 0.0
+    for ptbin in range(npt):
+        failT, _, _, _ = get_template(
+            infile_path, qcd_tf_proc, "fail_", bin_indices[ptbin], cat, msd, "nominal"
         )
-        tf_MCtempl_params = qcdeff * tf_MCtempl(ptscaled, rhoscaled)
+        passT, _, _, _ = get_template(
+            infile_path, qcd_tf_proc, f"pass_{reg}_", bin_indices[ptbin], cat, msd, "nominal"
+        )
+        qcdfail += np.sum(failT)
+        qcdpass += np.sum(passT)
+    qcdeff = qcdpass / qcdfail
 
-        for ptbin in range(npt):
-            failCh = qcdmodel[f"ptbin{ptbin}{cat}fail{year}{reg}"]
-            passCh = qcdmodel[f"ptbin{ptbin}{cat}pass{year}{reg}"]
+    ratio, err = raw_pass_fail_ratio(infile_path, qcd_tf_proc, reg, cat, msd, npt, bin_indices)
 
-            failObs = failCh.getObservation()[0]
-            qcdparams = np.array(
-                [
-                    rl.IndependentParameter(f"qcdparam_ptbin{ptbin}{cat}{year}{reg}_{i}", 0)
-                    for i in range(msd.nbins)
-                ]
-            )
-            scaledparams = (
-                failObs * (1 + 10.0 / np.maximum(1.0, np.sqrt(failObs))) ** qcdparams
-            )
-
-            fail_qcd = rl.ParametericSample(
-                f"ptbin{ptbin}{cat}fail{year}{reg}_qcd", rl.Sample.BACKGROUND, msd, scaledparams
-            )
-            failCh.addSample(fail_qcd)
-
-            pass_qcd = rl.TransferFactorSample(
-                f"ptbin{ptbin}{cat}pass{year}{reg}_qcd",
-                rl.Sample.BACKGROUND,
-                tf_MCtempl_params[ptbin, :],
-                fail_qcd,
-            )
-            passCh.addSample(pass_qcd)
-
-            failCh.mask = validbins[ptbin]
-            passCh.mask = validbins[ptbin]
-
-        qcdfit_ws = ROOT.RooWorkspace("w")
-        simpdf, obs = qcdmodel.renderRoofit(qcdfit_ws)
-        qcdfit = simpdf.fitTo(
-            obs,
-            ROOT.RooFit.Extended(True),
-            ROOT.RooFit.SumW2Error(True),
-            ROOT.RooFit.Strategy(2),
-            ROOT.RooFit.Save(),
-            ROOT.RooFit.PrintLevel(-1),
+    # Fit only bins inside the rho window that carry a usable MC error.
+    fitmask = validbins & np.isfinite(ratio) & np.isfinite(err) & (err > 0)
+    npar = (order[0] + 1) * (order[1] + 1)
+    if fitmask.sum() < npar:
+        raise RuntimeError(
+            f"MC TF fit for {cat} {reg} order {order}: only {int(fitmask.sum())} usable "
+            f"bins for {npar} parameters"
         )
 
-        if qcdfit.status() == 0:
-            param_names = [p.name for p in tf_MCtempl.parameters.reshape(-1)]
-            allparams = dict(zip(qcdfit.nameArray(), qcdfit.valueArray()))
-            fitted_values = np.array([allparams[p] for p in param_names]).reshape(
-                tf_MCtempl.parameters.shape
-            )
-            # RooFit's fitTo() only updates its own internal RooRealVars; sync the
-            # Python-side IndependentParameter.value too, otherwise tf_MCtempl(...,
-            # nominal=True) (used for plotting) silently evaluates at init_params
-            # instead of the fit result.
-            tf_MCtempl.set_parvalues(fitted_values.reshape(-1))
-            return tf_MCtempl, qcdfit, qcdeff, fitted_values
+    # ratio ~ qcdeff * sum_i c_i * B_i(pt, rho): linear in c, so solve directly.
+    design = qcdeff * tf_design_matrix(ptscaled, rhoscaled, order)[fitmask]
+    y = ratio[fitmask]
+    w = 1.0 / err[fitmask] ** 2
+    ata = design.T @ (design * w[:, None])
+    aty = design.T @ (y * w)
+    if np.linalg.matrix_rank(ata) < npar:
+        raise RuntimeError(
+            f"MC TF fit for {cat} {reg} order {order}: design matrix is rank deficient; "
+            "the requested order is not constrained by the available bins"
+        )
+    coeffs = np.linalg.solve(ata, aty)
+    cov = np.linalg.inv(ata)
+    chi2 = float(np.sum(((y - design @ coeffs) / err[fitmask]) ** 2))
 
-    raise RuntimeError(f"Could not fit MC TF for {cat} {reg} order {order} after {max_tries} tries!")
+    fitted_values = coeffs.reshape(tuple(o + 1 for o in order))
+    tf_MCtempl = rl.BasisPoly(
+        f"tf_MCtempl_{cat}{reg}{year}",
+        order,
+        ["pt", "rho"],
+        basis="Bernstein",
+        init_params=fitted_values,
+        limits=(0, 10),
+    )
+    # BasisPoly stores init_params separately from the parameter values; sync them so
+    # tf_MCtempl(..., nominal=True) (used for plotting and the chi2) sees the fit.
+    tf_MCtempl.set_parvalues(coeffs)
+
+    if np.any(coeffs < 0):
+        warnings.warn(
+            f"MC TF fit for {cat} {reg} order {order} has negative Bernstein "
+            f"coefficients {coeffs[coeffs < 0]}; the transfer factor is no longer "
+            "guaranteed non-negative over the (pt, rho) plane.",
+            stacklevel=2,
+        )
+
+    param_names = [p.name for p in tf_MCtempl.parameters.reshape(-1)]
+    fitresult = MCTFFitResult(param_names, coeffs, cov, chi2, int(fitmask.sum()) - npar)
+    return tf_MCtempl, fitresult, qcdeff, fitted_values
 
 
 def raw_pass_fail_ratio(infile_path, qcd_tf_proc, reg, cat, msd, npt, bin_indices=None):
@@ -385,10 +452,10 @@ def add_systematics(
     if not systs:
         return
 
-    # 1. Statistical Uncertainty (Barlow-Beeston)
-    sample.autoMCStats(lnN=True)
+    # MC statistical uncertainties are per-bin and need the whole channel, so they
+    # are added in make_datacards.py once all templates are in the channel.
 
-    # 2. Shape / Normalization Systematics
+    # Shape / Normalization Systematics
     for sys_name, nuisance_par in systs.items():
         # Get Up/Down Shapes (using merged template logic to handle groups)
         syst_up = get_merged_template(
@@ -398,8 +465,21 @@ def add_systematics(
         syst_down = get_merged_template(
             infile_path, components, region, ptbin, cat, obs, syst=sys_name + "Down"
         )[0]
-        # Convert shape variation to single normalization number (lnN effect)
-        eff_up = shape_to_num(syst_up, nominal)
-        eff_do = shape_to_num(syst_down, nominal)
+        # A systematic whose variations are identical to nominal carries no
+        # information (UES is exactly this in the dark-shower SR, since the
+        # selection never touches MET); adding it would only clutter the impacts.
+        if np.array_equal(syst_up, nominal) and np.array_equal(syst_down, nominal):
+            continue
+
+        # Honour how the nuisance was declared: a "shape" prior wants the per-bin
+        # effect, "lnN" collapses it to a single yield ratio. Collapsing loses the
+        # larger part of some systematics - JES shifts these templates by 7-40%
+        # per bin while moving the yield by only 1-3%.
+        if "shape" in nuisance_par.combinePrior:
+            eff_up = shape_to_ratio(syst_up, nominal)
+            eff_do = shape_to_ratio(syst_down, nominal)
+        else:
+            eff_up = shape_to_num(syst_up, nominal)
+            eff_do = shape_to_num(syst_down, nominal)
 
         sample.setParamEffect(nuisance_par, eff_up, eff_do)

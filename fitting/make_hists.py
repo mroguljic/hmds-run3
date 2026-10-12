@@ -18,9 +18,11 @@ from pathlib import Path
 
 import hist
 import numpy as np
+import pyarrow.parquet as pq
 import uproot
 
 from hbb import utils
+from hbb.common_vars import NSV_MIN
 
 # --- REGION DIRECTORY MAPPING ---
 # Maps the keys in setup.json to the actual directory names on EOS
@@ -33,6 +35,148 @@ REGION_MAP = {
     "ggf": "signal-ggf",
     "sr": "signal-all",
 }
+
+
+def run_syst_for_process(process, syst, data_map_key, systematics_processes):
+    """
+    Should `process` be filled for systematic `syst`?
+
+    Nominal templates are built for every process. Non-nominal ones are only needed
+    by processes that carry shape systematics into the datacards: data never has
+    them, and `systematics_processes` (from the setup JSON) names the rest. Leaving
+    that key unset preserves the old behaviour of running everything on everything.
+    """
+    if syst == "nominal":
+        return True
+    if process == data_map_key or "data" in process.lower():
+        return False
+    if systematics_processes is None:
+        return True
+    return process in systematics_processes
+
+
+def check_inputs(
+    pmap, load_groups, cols, data_map_key, systematics_processes, dirs, region
+):
+    """
+    Fail fast on skims that can't produce the templates this run is about to ask for.
+
+    Two failure modes are worth catching before any loading starts:
+
+    - A missing weight column (pileupUp, ...). `fill_binned_histogram` degrades to
+      the nominal weight when a syst column is absent, so the systematic would come
+      out bit-identical to nominal - a well-formed datacard entry with a silently
+      null effect. That is the dangerous one.
+    - A dataset present in the nominal skim but missing from a variation folder it
+      is needed in. That variation's template would then be built from a subset of
+      the process's datasets, i.e. mis-normalized against its own nominal.
+
+    A dataset absent from the nominal skim altogether is *not* an error - that is
+    just a sample not skimmed for this year - so those are only reported.
+
+    Only reads footers where a weight column actually has to be verified (the
+    nominal folders of processes carrying weight systematics), so this costs a
+    couple of dozen footer reads rather than one per dataset per variation. Base
+    columns missing from the processes not covered here surface within the first
+    minute anyway, since those are the first loads the run performs.
+
+    Returns the set of `(process, dataset)` pairs that are actually skimmed, so the
+    caller can skip the rest instead of rediscovering their absence once per load
+    group - that is ~900 pointless EOS globs, and 170 near-identical warnings that
+    bury a genuinely missing dataset.
+    """
+    not_skimmed, partial, bad_cols = [], [], []
+
+    def parquet_files(process, dataset, variation):
+        path = (
+            Path(dirs["sig"] if process == "Signal" else dirs["bkg"])
+            / dataset
+            / "parquet"
+            / variation
+            / region
+        )
+        return sorted(path.glob("*.parquet")) if path.is_dir() else []
+
+    def processes():
+        for process, datasets in pmap.items():
+            if "data" in process.lower() and process != data_map_key:
+                continue
+            yield process, datasets
+
+    # Which datasets exist at all? One with no nominal skim simply wasn't skimmed for
+    # this year, so there is nothing to check in its variation folders either - doing
+    # this first is also what keeps us off ~900 pointless EOS globs.
+    skimmed = {}
+    for process, datasets in processes():
+        for dataset in datasets:
+            files = parquet_files(process, dataset, "nominal")
+            if files:
+                skimmed[(process, dataset)] = files
+            else:
+                not_skimmed.append(f"{process}/{dataset}")
+
+    # FatJet0_nSV changed meaning with the SV definition; one footer per process
+    checked = set()
+    for (process, _), files in skimmed.items():
+        if process not in checked:
+            checked.add(process)
+            utils.check_sv_definition(files[0])
+
+    for variation, group_systs in load_groups.items():
+        for process, datasets in processes():
+            systs_for_proc = [
+                syst
+                for syst in group_systs
+                if run_syst_for_process(process, syst, data_map_key, systematics_processes)
+            ]
+            if not systs_for_proc:
+                continue
+
+            weight_cols = [
+                syst for syst in systs_for_proc if variation == "nominal" and syst != "nominal"
+            ]
+
+            for dataset in datasets:
+                if (process, dataset) not in skimmed:
+                    continue
+
+                files = (
+                    skimmed[(process, dataset)]
+                    if variation == "nominal"
+                    else parquet_files(process, dataset, variation)
+                )
+                if not files:
+                    # Skimmed for nominal but not for this variation: the variation
+                    # template would be built from fewer datasets than the nominal it
+                    # is compared against.
+                    partial.append(f"{process}/{dataset} has no {variation} skim")
+                    continue
+
+                if not weight_cols:
+                    continue
+
+                names = set(pq.read_schema(files[0]).names)
+                absent = [c for c in (*cols, *weight_cols) if c not in names]
+                if absent:
+                    bad_cols.append(f"{process}/{dataset} ({variation}): {', '.join(absent)}")
+
+    if not_skimmed:
+        print(f"  [INFO] {len(not_skimmed)} dataset(s) not skimmed for this year, skipping:")
+        print(f"         {', '.join(not_skimmed[:8])}{' ...' if len(not_skimmed) > 8 else ''}")
+
+    problems = partial + bad_cols
+    if problems:
+        raise RuntimeError(
+            "make_hists cannot build the requested templates from these skims:\n  "
+            + "\n  ".join(problems)
+            + "\n\nA missing weight column would produce a systematic template identical "
+            "to nominal, and a missing variation folder would produce one built from "
+            "fewer datasets than its nominal. Fix the skim, or drop the affected "
+            "systematic/process from setup_sr.json, rather than running past this."
+        )
+
+    print("  [OK] All required skim folders and columns present.")
+    return set(skimmed)
 
 
 def fill_binned_histogram(
@@ -125,8 +269,8 @@ def fill_binned_histogram(
             TQCD = data["FatJet0_ParTPQCD"]
             nSV = data["FatJet0_nSV"]
             selection_dict = {
-                "pass": pre_selection & (TQCD < 0.075) & (nSV > 6),
-                "fail": pre_selection & (TQCD > 0.075) & (TQCD < 0.6) & (nSV > 6),
+                "pass": pre_selection & (TQCD < 0.075) & (nSV > NSV_MIN),
+                "fail": pre_selection & (TQCD > 0.075) & (TQCD < 0.6) & (nSV > NSV_MIN),
                 "inclusive": pre_selection,
             }
 
@@ -226,6 +370,17 @@ def main(args):
             for s in setup.get("active_systematics", []):
                 systs_to_run.extend([f"{s}Up", f"{s}Down"])
 
+
+        # Folder-based systematics (JES/JER/UES/...) each live in their own skim directory, but the
+        # weight-based ones (pileup, ISR/FSR) are just extra columns in the *nominal* skim
+        load_groups = {}  # variation folder -> systematics served from that folder
+        for syst in systs_to_run:
+            variation = syst if any(fs in syst for fs in folder_systs) else "nominal"
+            load_groups.setdefault(variation, []).append(syst)
+
+        # Only processes that are actually fitted with shape systematics need the non-nominal passes.
+        systematics_processes = setup.get("systematics_processes")
+
         obs_name = setup["observable"]["name"]  # e.g., "msd"
 
         output_root = Path(args.outdir) / f"fitting_{args.year}_{region_key}_{obs_name}.root"
@@ -299,29 +454,62 @@ def main(args):
             # keep a small margin while cutting ~90% of low-pT GJets rows.
             pq_filters.append(("Photon0_pt", ">=", 100.0))
 
-        for syst in systs_to_run:
-            print(f"\n>>> Running Systematic Pass: {syst}")
-            is_folder = any(fs in syst for fs in folder_systs)
-            variation = syst if is_folder else "nominal"
+        # Verify the skims can actually produce what we are about to ask for, before
+        # spending ~12 minutes on data and QCD only to die on the first fitted process.
+        print("\n>>> Checking skims")
+        skimmed = check_inputs(
+            pmap,
+            load_groups,
+            cols,
+            data_map_key,
+            systematics_processes,
+            {"bkg": bkg_data_dir, "sig": sig_data_dir},
+            region_to_load,
+        )
 
-            # Weight-based systematics are extra columns in the nominal parquet
-            # (e.g. pileupUp, ISRPartonShowerDown). Load that column for this pass so
-            # the fill can actually read it — otherwise it silently falls back to the
-            # nominal weight and the systematic collapses to a null 1.0000 effect.
-            weight_syst_col = syst if (not is_folder and syst != "nominal") else None
-            load_cols = [*cols, weight_syst_col] if weight_syst_col else cols
+        for variation, group_systs in load_groups.items():
+            print(f"\n>>> Reading '{variation}' skims, filling: {', '.join(group_systs)}")
 
-            histograms = {}
+            # histograms[syst][process] — one entry per systematic served by this load.
+            histograms = {syst: {} for syst in group_systs}
+
             for process, datasets in pmap.items():
                 if "data" in process.lower() and process != data_map_key:
                     continue
-                if process == data_map_key and syst != "nominal":
+
+                systs_for_proc = [
+                    syst
+                    for syst in group_systs
+                    if run_syst_for_process(
+                        process, syst, data_map_key, systematics_processes
+                    )
+                ]
+                if not systs_for_proc:
                     continue
 
-                h = hist.Hist(axis_var, axis_bin, axis_cat, axis_flav, storage=hist.storage.Weight())
+                # Weight-based systematics are extra columns in the nominal parquet
+                # Load those columns so the fill can actually read them
+                weight_syst_cols = [
+                    syst for syst in systs_for_proc if variation == "nominal" and syst != "nominal"
+                ]
+
+                hists = {
+                    syst: hist.Hist(
+                        axis_var, axis_bin, axis_cat, axis_flav, storage=hist.storage.Weight()
+                    )
+                    for syst in systs_for_proc
+                }
+
                 for dataset in datasets:
+                    if (process, dataset) not in skimmed:
+                        # Not skimmed for this year; check_inputs already said so.
+                        continue
+
+                    data_dir = sig_data_dir if process == "Signal" else bkg_data_dir
+                    load_cols = cols + weight_syst_cols
+
                     events = utils.load_samples(
-                        data_dir=sig_data_dir if process == "Signal" else bkg_data_dir,
+                        data_dir=data_dir,
                         samples={process: [dataset]},
                         columns=load_cols,
                         region=region_to_load,
@@ -330,44 +518,52 @@ def main(args):
                         prescale=args.prescale,
                     )
                     if events:
-                        # Pass the dynamic branch
-                        h = fill_binned_histogram(
-                            h,
-                            events,
-                            region_key,
-                            setup,
-                            bin_branch=bin_branch,
-                            weight_syst=syst if not is_folder else "nominal",
-                        )
+                        # One load, one fill per systematic served by this pass.
+                        for syst in systs_for_proc:
+                            # Folder systematics carry their shift in the skim itself,
+                            # so they are filled with the nominal weight of that folder.
+                            weight_syst = (
+                                syst if (variation == "nominal" and syst != "nominal") else "nominal"
+                            )
+                            hists[syst] = fill_binned_histogram(
+                                hists[syst],
+                                events,
+                                region_key,
+                                setup,
+                                bin_branch=bin_branch,
+                                weight_syst=weight_syst,
+                            )
                     # Memory management within dataset loop
                     del events
                     gc.collect()
 
-                if h.sum().value > 0:
-                    histograms[process] = h
+                for syst, h in hists.items():
+                    if h.sum().value > 0:
+                        histograms[syst][process] = h
 
-            if args.save_root:
-                export_to_root(
-                    histograms,
-                    output_root,
-                    region_key,
-                    setup.get("samples_qq", []),
-                    syst,
-                    data_map_key,
+            for syst in group_systs:
+                if args.save_root:
+                    export_to_root(
+                        histograms[syst],
+                        output_root,
+                        region_key,
+                        setup.get("samples_qq", []),
+                        syst,
+                        data_map_key,
+                    )
+                    print(
+                        f"  [SUCCESS] Updated {output_root} with {len(histograms[syst])} processes for systematic: {syst}"
+                    )
+
+                # --- NEW: Save Pickles for plotting pipeline ---
+                pickle_path = (
+                    Path(args.outdir) / f"hists_{args.year}_{region_key}_{obs_name}_{syst}.pkl"
                 )
-                print(
-                    f"  [SUCCESS] Updated {output_root} with {len(histograms)} processes for systematic: {syst}"
-                )
+                with pickle_path.open("wb") as f:
+                    pickle.dump(histograms[syst], f)
+                print(f"  [SUCCESS] Pickles saved to: {pickle_path}")
 
-            # --- NEW: Save Pickles for plotting pipeline ---
-            pickle_path = (
-                Path(args.outdir) / f"hists_{args.year}_{region_key}_{obs_name}_{syst}.pkl"
-            )
-            with pickle_path.open("wb") as f:
-                pickle.dump(histograms, f)
-            print(f"  [SUCCESS] Pickles saved to: {pickle_path}")
-
-            # Memory management after each systematic pass
+            # Memory management after each load group
             del histograms
             gc.collect()
 

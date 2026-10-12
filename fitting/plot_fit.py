@@ -165,34 +165,42 @@ def plot_transfer_factors(args, cfg, outdir):
     final_tf = mctf * residual
 
     # ---- draw: 3 rows (MC TF, residual, final TF) x npt columns ----
+    # With --no-mc-row the MC-TF row is dropped (it duplicates plot_mctf_scan.py).
+    rows = ["mc", "res", "final"][1 if args.no_mc_row else 0:]
     plt.style.use(hep.style.CMS)
-    fig, axes = plt.subplots(3, npt, figsize=(5 * npt, 12), sharex=True)
-    if npt == 1:
-        axes = axes.reshape(3, 1)
-    row_titles = ["MC transfer factor", "Data residual (postfit)", "Final TF = qcdeff·MC·resid"]
+    fig, axes = plt.subplots(len(rows), npt, figsize=(5 * npt, 4 * len(rows)), sharex=True)
+    axes = np.asarray(axes).reshape(len(rows), npt)
+    row_titles = {
+        "mc": "MC transfer factor",
+        "res": "Data residual (postfit)",
+        "final": "Final TF = qcdeff·MC·resid",
+    }
+    row = {r: axes[i] for i, r in enumerate(rows)}
 
     for ptbin in range(npt):
         m = valid[ptbin]
         pt_lbl = f"{ptbins[ptbin]:.0f}–{ptbins[ptbin + 1]:.0f} GeV"
 
-        # Row 0: MC TF
-        ax = axes[0, ptbin]
-        ax.plot(msd_centers[m], raw_ratio[ptbin][m], "o", color="black", ms=5,
-                label="QCD MC pass/fail")
-        ax.plot(msd_centers[m], mctf[ptbin][m], "-", color="#c0392b", lw=2.2,
-                label="Bernstein fit")
-        ax.set_title(f"$p_T$ {pt_lbl}", fontsize=13)
-        ax.legend(fontsize=9)
+        axes[0, ptbin].set_title(f"$p_T$ {pt_lbl}", fontsize=13)
 
-        # Row 1: residual
-        ax = axes[1, ptbin]
+        # Row: MC TF
+        if "mc" in row:
+            ax = row["mc"][ptbin]
+            ax.plot(msd_centers[m], raw_ratio[ptbin][m], "o", color="black", ms=5,
+                    label="QCD MC pass/fail")
+            ax.plot(msd_centers[m], mctf[ptbin][m], "-", color="#c0392b", lw=2.2,
+                    label="Bernstein fit")
+            ax.legend(fontsize=9)
+
+        # Row: residual
+        ax = row["res"][ptbin]
         ax.axhline(1.0, color="gray", ls="--", lw=1.2, label="prefit = 1")
         ax.plot(msd_centers[m], residual[ptbin][m], "-", color="#2471a3", lw=2.2,
                 label="postfit residual")
         ax.legend(fontsize=9)
 
-        # Row 2: final TF
-        ax = axes[2, ptbin]
+        # Row: final TF
+        ax = row["final"][ptbin]
         ax.plot(msd_centers[m], final_tf[ptbin][m], "-", color="#1e8449", lw=2.2,
                 label="final TF")
         ax.plot(msd_centers[m], mctf[ptbin][m], ":", color="#c0392b", lw=1.6,
@@ -200,8 +208,8 @@ def plot_transfer_factors(args, cfg, outdir):
         ax.set_xlabel(r"$m_{sd}$ [GeV]")
         ax.legend(fontsize=9)
 
-    for r in range(3):
-        axes[r, 0].set_ylabel(row_titles[r], fontsize=11)
+    for i, r in enumerate(rows):
+        axes[i, 0].set_ylabel(row_titles[r], fontsize=11)
 
     hep.cms.text("WiP", ax=axes[0, 0], fontsize=13)
     fig.suptitle(
@@ -238,12 +246,13 @@ def plot_transfer_factors(args, cfg, outdir):
     print(f"  saved {out}")
 
 
-def plot_prefit_postfit(args, outdir):
+def plot_prefit_postfit(args, cfg, outdir):
     if not Path(args.fitdiag_path).exists():
         print(f"  [skip prefit/postfit] {args.fitdiag_path} not found")
         return
+    npt = len(cfg["categories"]["sr"]["bins"]) - 1
     f = uproot.open(args.fitdiag_path)
-    channels = [f"ptbin{i}sr{reg}{args.year}" for i in range(args.npt) for reg in ("pass", "fail")]
+    channels = [f"ptbin{i}sr{reg}{args.year}" for i in range(npt) for reg in ("pass", "fail")]
     for fit in ("prefit", "postfit"):
         fitdir = FIT_DIRS[fit]
         for ch in channels:
@@ -259,11 +268,12 @@ def main():
     p.add_argument("--model", default="srModel")
     p.add_argument("--fitdiag", default="fitDiagnostics_final.root",
                    help="FitDiagnostics file inside the datacard dir")
-    p.add_argument("--npt", type=int, default=3)
     p.add_argument("--mc-pt-order", type=int, default=2)
     p.add_argument("--mc-rho-order", type=int, default=0)
     p.add_argument("--res-pt-order", type=int, default=1)
     p.add_argument("--res-rho-order", type=int, default=0)
+    p.add_argument("--no-mc-row", action="store_true",
+                   help="drop the MC-TF row from the transfer-factor decomposition plot")
     p.add_argument("--which", nargs="+", default=["tf", "prefitpostfit"],
                    choices=["tf", "prefitpostfit"])
     args = p.parse_args()
@@ -283,7 +293,7 @@ def main():
     if "tf" in args.which:
         plot_transfer_factors(args, cfg, outdir)
     if "prefitpostfit" in args.which:
-        plot_prefit_postfit(args, outdir)
+        plot_prefit_postfit(args, cfg, outdir)
 
     print(f"\nAll plots in {outdir}")
 

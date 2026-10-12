@@ -34,7 +34,10 @@ warnings.filterwarnings("ignore")
 rl.util.install_roofit_helpers()
 
 lumi_err = {"2022": 1.01, "2023": 1.02, "2024": 1.02}  # 2024: TODO get official CMS value
-eps = 0.001 
+eps = 0.001
+# Barlow-Beeston-lite threshold on the effective number of background MC events
+# per bin (same meaning and default as Combine's autoMCStats threshold).
+MCSTAT_NEFF_THRESHOLD = 10 
 
 
 def rhalphabet(args):
@@ -109,22 +112,27 @@ def rhalphabet(args):
 
     if do_systematics:
         # --- A. Experimental Systematics (from sys_dict) ---
+        # Experimental systematics are declared "shape": these are per-bin template
+        # variations, and collapsing them to a yield ratio throws away the larger
+        # part of several of them (JES moves these templates by 7-40% per bin while
+        # changing the yield by 1-3%). add_systematics() reads combinePrior to decide,
+        # so switching a name back to "lnN" here is all that is needed to collapse it.
         available_exp_systs = {
-            "pileup": rl.NuisanceParameter(f"CMS_PU_{year}", "lnN"),
-            "JES": rl.NuisanceParameter(f"CMS_scale_j_{year}", "lnN"),
-            "JER": rl.NuisanceParameter(f"CMS_res_j_{year}", "lnN"),
-            "UES": rl.NuisanceParameter(f"CMS_ues_j_{year}", "lnN"),
-            "ISRPartonShower": rl.NuisanceParameter("ISRPartonShower", "lnN"),
-            "FSRPartonShower": rl.NuisanceParameter("FSRPartonShower", "lnN"),
-            "MuonPTScale": rl.NuisanceParameter(f"CMS_scale_m_{year}", "lnN"),
-            "MuonPTRes": rl.NuisanceParameter(f"CMS_res_m_{year}", "lnN"),
-            "btagSFb": rl.NuisanceParameter(f"CMS_btagSFb_{year}", "lnN"),
-            "btagSFc": rl.NuisanceParameter(f"CMS_btagSFc_{year}", "lnN"),
-            "btagSFlight": rl.NuisanceParameter(f"CMS_btagSFlight_{year}", "lnN"),
-            "btagSFb_correlated": rl.NuisanceParameter(f"CMS_btagSFb_correlated_{year}", "lnN"),
-            "btagSFc_correlated": rl.NuisanceParameter(f"CMS_btagSFc_correlated_{year}", "lnN"),
+            "pileup": rl.NuisanceParameter(f"CMS_PU_{year}", "shape"),
+            "JES": rl.NuisanceParameter(f"CMS_scale_j_{year}", "shape"),
+            "JER": rl.NuisanceParameter(f"CMS_res_j_{year}", "shape"),
+            "UES": rl.NuisanceParameter(f"CMS_ues_j_{year}", "shape"),
+            "ISRPartonShower": rl.NuisanceParameter("ISRPartonShower", "shape"),
+            "FSRPartonShower": rl.NuisanceParameter("FSRPartonShower", "shape"),
+            "MuonPTScale": rl.NuisanceParameter(f"CMS_scale_m_{year}", "shape"),
+            "MuonPTRes": rl.NuisanceParameter(f"CMS_res_m_{year}", "shape"),
+            "btagSFb": rl.NuisanceParameter(f"CMS_btagSFb_{year}", "shape"),
+            "btagSFc": rl.NuisanceParameter(f"CMS_btagSFc_{year}", "shape"),
+            "btagSFlight": rl.NuisanceParameter(f"CMS_btagSFlight_{year}", "shape"),
+            "btagSFb_correlated": rl.NuisanceParameter(f"CMS_btagSFb_correlated_{year}", "shape"),
+            "btagSFc_correlated": rl.NuisanceParameter(f"CMS_btagSFc_correlated_{year}", "shape"),
             "btagSFlight_correlated": rl.NuisanceParameter(
-                f"CMS_btagSFlight_correlated_{year}", "lnN"
+                f"CMS_btagSFlight_correlated_{year}", "shape"
             ),
         }
 
@@ -188,23 +196,13 @@ def rhalphabet(args):
         tf_params[cat] = {}
 
         for reg in regions_to_fit:
-            # Initial Values Loading
+            # Written below for plot_fit.py; the least-squares fit needs no seed.
             initF = initvals_dir / f"initial_vals_{cat}_{reg}.json"
-            initial_vals = None
-            if initF.exists():
-                with initF.open() as f:
-                    loaded = np.array(json.load(f)["initial_vals"])
-                if (loaded.shape[0] - 1 == args.mc_pt_order) and (
-                    loaded.shape[1] - 1 == args.mc_rho_order
-                ):
-                    initial_vals = loaded
-                else:
-                    print(f"Order Mismatch for {reg}. Resetting.")
 
             bin_indices = [
                 1 if (analysis == "vbf" and "hi" in cat) else ptbin + 1 for ptbin in range(npt)
             ]
-            tf_MCtempl, qcdfit, qcdeff, new_values = fit_mc_tf(
+            tf_MCtempl, mctf_fit, qcdeff, new_values = fit_mc_tf(
                 infile_path,
                 qcd_tf_proc,
                 cat,
@@ -216,10 +214,19 @@ def rhalphabet(args):
                 rhoscaled,
                 validbins[cat],
                 (args.mc_pt_order, args.mc_rho_order),
-                init_params=initial_vals,
                 bin_indices=bin_indices,
             )
-            print(f"Inclusive P/F ({cat} {reg}) = {qcdeff:.4f}")
+            print(
+                f"Inclusive P/F ({cat} {reg}) = {qcdeff:.4f}   "
+                f"MC TF chi2/ndf = {mctf_fit.chi2:.1f}/{mctf_fit.ndf}   "
+                f"coeff errors = {np.array2string(mctf_fit.errors, precision=4)}"
+            )
+            if mctf_fit.status() != 0:
+                raise RuntimeError(
+                    f"MC TF fit for {cat} {reg} returned a non-positive-definite "
+                    "covariance; the decorrelated nuisances built from it would be "
+                    "meaningless."
+                )
             with initF.open("w") as outfile:
                 json.dump({"initial_vals": new_values.tolist()}, outfile)
 
@@ -235,10 +242,7 @@ def rhalphabet(args):
                 rho_max=rho_scaling_max,  # <--- Pass from config (-1.0 for ZG)
             )
 
-            param_names = [p.name for p in tf_MCtempl.parameters.reshape(-1)]
-            decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(
-                tf_MCtempl.name + "_deco", qcdfit, param_names
-            )
+            decoVector = mctf_fit.decorrelate(tf_MCtempl.name + "_deco")
             tf_MCtempl.parameters = decoVector.correlated_params.reshape(
                 tf_MCtempl.parameters.shape
             )
@@ -280,6 +284,7 @@ def rhalphabet(args):
                 ch_name = f"ptbin{ptbin}{cat}{region.replace('_', '')}{year}"
                 ch = rl.Channel(ch_name)
                 model.addChannel(ch)
+                signal_samples = []
 
                 for proc_name, info in sample_dict.items():
                     # proc_name is e.g., 'ggF', 'VBF', 'ttbar'
@@ -303,8 +308,8 @@ def rhalphabet(args):
                     )
 
                     if do_systematics:
-                        # 1. Automatic MC Statistical Uncertainties (Barlow-Beeston Lite)
-                        # (Already handled inside add_systematics in card_utils.py)
+                        # 1. MC statistical uncertainties: added per bin after the
+                        # sample loop, see below.
 
                         # 2. Experimental Systematics (Shapes from ROOT file)
                         # Filter out theory systematics so they aren't double-applied
@@ -419,7 +424,28 @@ def rhalphabet(args):
                                     np.sum(sc_do) / np.sum(nominal),
                                 )
 
-                    ch.addSample(sample)
+                    # Signal is held back so the channel-level MC stats below
+                    # only see backgrounds.
+                    if do_systematics and stype == rl.Sample.SIGNAL:
+                        signal_samples.append(sample)
+                    else:
+                        ch.addSample(sample)
+
+                # MC statistical uncertainties, per msd bin. Backgrounds use
+                # Barlow-Beeston-lite: one nuisance per bin on the summed
+                # background, or one per sample in bins with fewer than
+                # MCSTAT_NEFF_THRESHOLD effective MC events. rhalphalib's
+                # Channel.autoMCStats always adds every sample in the channel into
+                # that sum, and in the pass channels signal is about half of the
+                # MC, so signal gets its own per-bin nuisances instead.
+                # Must run before the parametric QCD is added (section 6), which
+                # has no sumw2.
+                if do_systematics:
+                    if len(ch._samples):
+                        ch.autoMCStats(threshold=MCSTAT_NEFF_THRESHOLD)
+                    for sig in signal_samples:
+                        sig.autoMCStats(lnN=False)
+                        ch.addSample(sig)
 
                 # Data
                 data_obs = get_template(
