@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AK8 jet-trigger efficiency and data/MC scale factors, measured in the mu+jets ttbar
+Trigger efficiency and data/MC scale factors, measured in the mu+jets ttbar
 control region (``control-tt`` skims) with the single-muon trigger as reference.
 
 Efficiency of the SR trigger OR (``triggers.json``) for the CR probe jet (the nSV-sorted
