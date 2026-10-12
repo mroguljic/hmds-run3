@@ -223,6 +223,8 @@ def plot_nsv_distributions(hists, category, year_str, outdir, region, style):
             sort_by_yield=True,
             legend_title=legend_title,
             ylabel="Events / bin",
+            overlay_sigs=True,
+            logy=True,
         )
 
         luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")

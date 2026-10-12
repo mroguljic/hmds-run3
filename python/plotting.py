@@ -101,6 +101,8 @@ def ratio_plot(
     sort_by_yield: bool = True,  # Whether to sort backgrounds by yield
     legend_title: str | None = None,
     ylabel: str = "Events / bin",
+    overlay_sigs: bool = False,  # Draw signals as unstacked lines normalized to total bkg
+    logy: bool = False,
 ):
     style = style.copy()
 
@@ -122,6 +124,10 @@ def ratio_plot(
         # print(f"Bkg order after sorting by yield: {bkgs}")
     # --- END NEW LOGIC ---
 
+    # A small signal stacked on top of a large background is invisible, so optionally
+    # leave it out of the stack and overlay it as a line instead (see below).
+    stacked = bkgs if overlay_sigs else bkgs + sigs
+
     data = hist_dict.get("data", None)
     all_bkg_keys = bkgs + ([onto] if onto else []) if bkgs else ([onto] if onto else [])
     all_bkgs_hists = [hist_dict[k] for k in all_bkg_keys if k in hist_dict]
@@ -133,12 +139,12 @@ def ratio_plot(
 
     if onto is None:
         hep.histplot(
-            [hist_dict[k] for k in bkgs + sigs],
+            [hist_dict[k] for k in stacked],
             ax=ax,
-            label=bkgs + sigs,
+            label=stacked,
             stack=True,
             histtype="fill",
-            facecolor=[style[k]["color"] for k in bkgs + sigs],
+            facecolor=[style[k]["color"] for k in stacked],
         )
     else:
         if onto in hist_dict:
@@ -151,21 +157,21 @@ def ratio_plot(
                 facecolor=style[onto]["color"],
             )
 
-        _hatch = [None, *[style[k]["hatch"] for k in bkgs + sigs]]
+        _hatch = [None, *[style[k]["hatch"] for k in stacked]]
         _edgecolor = [
             style[k]["color"] if h not in ["none", None] else None
-            for k, h in zip([onto] + bkgs + sigs, _hatch)
+            for k, h in zip([onto] + stacked, _hatch)
         ]
         _facecolor = [
             "none" if h not in ["none", None] or k == onto else style[k]["color"]
-            for k, h in zip([onto] + bkgs + sigs, _hatch)
+            for k, h in zip([onto] + stacked, _hatch)
         ]
-        _linewidth = [2] + [0] * len(bkgs + sigs)
+        _linewidth = [2] + [0] * len(stacked)
 
         hep.histplot(
-            [hist_dict[onto]] + [hist_dict[k] for k in bkgs + sigs],
+            [hist_dict[onto]] + [hist_dict[k] for k in stacked],
             ax=ax,
-            label=["_", *(bkgs + sigs)],
+            label=["_", *(stacked)],
             stack=True,
             histtype="fill",
             facecolor=_facecolor,
@@ -173,6 +179,14 @@ def ratio_plot(
             hatch=_hatch,
             linewidth=_linewidth,
         )
+
+    if overlay_sigs:
+        bkg_yield = tot_bkg.values().sum()
+        for k in sigs:
+            h_sig = hist_dict[k] * (bkg_yield / hist_dict[k].values().sum())
+            hep.histplot(
+                h_sig, ax=ax, label=k, histtype="step", color=style[k]["color"], linewidth=3
+            )
 
     # plot data
     if data is not None:
@@ -216,6 +230,9 @@ def ratio_plot(
         columnspacing=1.5,
         title=legend_title,
     )
+    if logy:
+        ax.set_yscale("log")
+        ax.set_ylim(bottom=1)
     hep.yscale_legend(ax, soft_fail=True)
 
     # Subplot/ratio

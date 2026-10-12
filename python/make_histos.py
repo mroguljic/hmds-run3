@@ -12,6 +12,7 @@ import numpy as np
 from common import common_mc, data_by_year
 
 from hbb import utils
+from hbb.common_vars import NSV_MIN
 
 # pT binning and the msd observable definition are taken from the fitting setup so that
 # plots and fit templates always use the same pT split and the same msd range/binning
@@ -86,10 +87,10 @@ def fill_ptbinned_histogram(h, events, axis):
         nsv = data["FatJet0_nSV"]
         pre_selection = (msd > MSD_MIN) & (msd < MSD_MAX) & (pt > PT_MIN) & (pt < PT_MAX)
         selection_dict = {
-            "pass": pre_selection & ((TQCD < 0.075) & (nsv > 6)),
-            "fail": pre_selection & ((TQCD > 0.075) & (TQCD < 0.6) & (nsv > 6)),
-            "nsv_pass": pre_selection & ((nsv > 6) & (TQCD < 0.6)),
-            "nsv_fail": pre_selection & ((nsv <= 6) & (TQCD < 0.6)),
+            "pass": pre_selection & ((TQCD < 0.075) & (nsv > NSV_MIN)),
+            "fail": pre_selection & ((TQCD > 0.075) & (TQCD < 0.6) & (nsv > NSV_MIN)),
+            "nsv_pass": pre_selection & ((nsv > NSV_MIN) & (TQCD < 0.6)),
+            "nsv_fail": pre_selection & ((nsv <= NSV_MIN) & (TQCD < 0.6)),
             "inclusive": pre_selection,  # No tagger/nSV cut — use for WP scans
         }
 
@@ -229,6 +230,10 @@ def main(args):
 
         # Loop through each dataset within the process
         for dataset in datasets:
+            skim_files = sorted((data_dir / dataset / "parquet" / "nominal" / region).glob("*.parquet"))
+            if skim_files:
+                utils.check_sv_definition(skim_files[0])
+
             # Read each dataset in batches of parquet files rather than all at once: the
             # high-HT QCD samples are tens of millions of rows and loading one in a single
             # frame gets OOM-killed on a shared node. Histogram fills are additive, so the
