@@ -70,10 +70,11 @@ def main(args):
     ax.legend(loc="upper right", fontsize=14, frameon=True)
     ax.text(0.04, 0.92, args.label, transform=ax.transAxes,
             fontsize=12, va="top", fontweight="bold")
-    hep.cms.label("WiP", data=True, ax=ax)
+    hep.cms.label("WiP", data=True, com=13.6, ax=ax)
 
     out = d / f"gof_{args.tag}.png"
     fig.savefig(out, dpi=120, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
     print(f"Plot saved: {out}")
 
 

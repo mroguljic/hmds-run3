@@ -23,11 +23,14 @@ BKG_STYLE = [
     ("Zjetsc", r"Z$\to qq$ (c)", "#2a7f7f"),
     ("Zjetsbb", r"Z$\to qq$ (bb)", "#1f6f6f"),
     ("VV", "VV", "#6a8caf"),
+    ("singlet", "Single t", "#e8b88a"),
     ("ttbar", r"$t\bar{t}$", "#d98c5f"),
 ]
 SIGNAL = "HMDS"
 
-FIT_DIRS = {"prefit": "shapes_prefit", "postfit": "shapes_fit_s"}
+# "postfit" = background-only fit (blinded default); "postfit_sb" = signal+background fit
+FIT_DIRS = {"prefit": "shapes_prefit", "postfit": "shapes_fit_b", "postfit_sb": "shapes_fit_s"}
+FIT_TITLES = {"prefit": "Prefit", "postfit": "Postfit (B-only)", "postfit_sb": "Postfit (S+B)"}
 
 
 def read_th1(f, path):
@@ -57,7 +60,10 @@ def read_data_graph(f, path):
     return x, y, eyl, eyh
 
 
-def draw_channel(f, fitdir, channel, year, out_png, title):
+def draw_channel(f, fitdir, channel, year, out_png, title, prescale=1, sig_dir=None):
+    """Draw one channel. `prescale` divides the lumi label (blinded data + MC scaled to
+    1/prescale); `sig_dir` reads the signal overlay from another shapes dir (e.g. the
+    prefit signal on a B-only postfit, where the signal is zero). Saves .png and .pdf."""
     centers_edges = None
 
     # Stack backgrounds
@@ -78,7 +84,7 @@ def draw_channel(f, fitdir, channel, year, out_png, title):
 
     total = read_th1(f, f"{fitdir}/{channel}/total_background")
     data = read_data_graph(f, f"{fitdir}/{channel}/data")
-    sig = read_th1(f, f"{fitdir}/{channel}/{SIGNAL}")
+    sig = read_th1(f, f"{sig_dir or fitdir}/{channel}/{SIGNAL}")
 
     if centers_edges is None and total is not None:
         centers_edges = total[1]
@@ -98,7 +104,9 @@ def draw_channel(f, fitdir, channel, year, out_png, title):
     fig, (ax, rax) = plt.subplots(
         2, 1, figsize=(8, 8), gridspec_kw={"height_ratios": [3, 1], "hspace": 0.08}, sharex=True
     )
-    hep.cms.label("WiP", data=True, lumi=f"{LUMI[year] / 1000.0:.1f}", year=year, ax=ax)
+    hep.cms.label(
+        "WiP", data=True, lumi=f"{LUMI[year] / 1000.0 / prescale:.1f}", year=year, com=13.6, ax=ax
+    )
 
     # Stacked backgrounds
     if stack_vals:
@@ -133,7 +141,11 @@ def draw_channel(f, fitdir, channel, year, out_png, title):
         ax.errorbar(x, y, yerr=[eyl, eyh], fmt="ko", markersize=4, label="Data", zorder=5)
 
     ax.set_ylabel("Events / GeV")
-    ax.set_ylim(bottom=0)
+    # headroom for the legend and the in-axes title
+    ymax = np.max(total_bkg + total_err)
+    if data is not None:
+        ymax = max(ymax, np.max(data[1] + data[3]))
+    ax.set_ylim(0, 1.45 * ymax)
     ax.legend(ncol=2, fontsize=9, loc="upper right")
     # In-axes label (below the CMS header, above the stack) to avoid colliding
     # with the hep.cms.label() header text.
@@ -161,6 +173,7 @@ def draw_channel(f, fitdir, channel, year, out_png, title):
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=120, bbox_inches="tight")
+    fig.savefig(out_png.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
     print(f"  saved {out_png}")
     return True

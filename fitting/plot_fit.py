@@ -9,7 +9,8 @@ Produces, from a single run, all of:
      (prefit == 1 shown as reference), per pt bin.
   3. Final transfer factor - qcdeff * tf_MCtempl * tf_dataResidual (postfit): the
      effective fail->pass multiplier, per pt bin.
-  4./5. Prefit / postfit stacked shapes per channel.
+  4./5. Prefit / postfit stacked shapes per channel. Postfit (and the residual) use
+     the B-only fit (fit_b) with the prefit signal overlaid; --sb-fit switches to fit_s.
 
 The MC-TF Bernstein coefficients come from the build-time fit stored in
 `initial_vals/initial_vals_{cat}_{reg}.json`; the residual (and the postfit
@@ -39,7 +40,7 @@ import ROOT
 import uproot
 
 from card_utils import get_template
-from shape_utils import FIT_DIRS, draw_channel
+from shape_utils import FIT_DIRS, FIT_TITLES, draw_channel
 
 ROOT.gROOT.SetBatch(True)
 
@@ -61,13 +62,13 @@ def build_grid(ptbins, msdbins, pt_min_scale, rho_min, rho_max):
     return ptpts, msdpts, ptscaled, rhoscaled, valid
 
 
-def read_postfit_params(fitdiag, name_substr):
-    """Return {param_name: value} for postfit (fit_s) params containing substr."""
+def read_postfit_params(fitdiag, name_substr, fit_name="fit_b"):
+    """Return {param_name: value} for postfit (fit_b or fit_s) params containing substr."""
     f = ROOT.TFile.Open(str(fitdiag))
-    fit_s = f.Get("fit_s")
-    if not fit_s:
-        raise RuntimeError(f"No fit_s RooFitResult in {fitdiag}")
-    fp = fit_s.floatParsFinal()
+    fit = f.Get(fit_name)
+    if not fit:
+        raise RuntimeError(f"No {fit_name} RooFitResult in {fitdiag}")
+    fp = fit.floatParsFinal()
     out = {}
     for p in fp.contentsString().split(","):
         if name_substr in p:
@@ -76,12 +77,12 @@ def read_postfit_params(fitdiag, name_substr):
     return out
 
 
-def coeffs_from_postfit(fitdiag, poly_name, shape):
+def coeffs_from_postfit(fitdiag, poly_name, shape, fit_name="fit_b"):
     """Assemble a coefficient array of `shape` from postfit params of poly_name.
 
     Params are named <poly>_pt_par{i}_rho_par{j} (rhalphalib BasisPoly convention).
     """
-    vals = read_postfit_params(fitdiag, poly_name)
+    vals = read_postfit_params(fitdiag, poly_name, fit_name)
     coeffs = np.ones(shape)
     for i in range(shape[0]):
         for j in range(shape[1]):
@@ -156,7 +157,8 @@ def plot_transfer_factors(args, cfg, outdir):
 
     # Residual coefficients (postfit from FitDiagnostics)
     res_coeffs = coeffs_from_postfit(
-        args.fitdiag_path, f"tf_dataResidual_{args.year}{cat}{reg}", (res_order[0] + 1, res_order[1] + 1)
+        args.fitdiag_path, f"tf_dataResidual_{args.year}{cat}{reg}", (res_order[0] + 1, res_order[1] + 1),
+        "fit_s" if args.sb_fit else "fit_b",
     )
     residual = eval_poly(
         f"tf_dataResidual_{args.year}{cat}{reg}", res_order, res_coeffs, ptscaled, rhoscaled, (0, 20)
@@ -219,6 +221,7 @@ def plot_transfer_factors(args, cfg, outdir):
     fig.tight_layout(rect=[0, 0, 1, 0.98])
     out = outdir / "transfer_factors.png"
     fig.savefig(out, dpi=120, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
     print(f"  saved {out}")
 
@@ -239,9 +242,10 @@ def plot_transfer_factors(args, cfg, outdir):
     ax.set_xlabel(r"$p_T$ [GeV]")
     ax.set_ylabel("Transfer factor")
     ax.legend(fontsize=11)
-    hep.cms.label("WiP", data=True, year=args.year, ax=ax)
+    hep.cms.label("WiP", data=True, year=args.year, com=13.6, ax=ax)
     out = outdir / "transfer_factors_vs_pt.png"
     fig.savefig(out, dpi=120, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
     print(f"  saved {out}")
 
@@ -250,13 +254,20 @@ def plot_prefit_postfit(args, cfg, outdir):
     if not Path(args.fitdiag_path).exists():
         print(f"  [skip prefit/postfit] {args.fitdiag_path} not found")
         return
-    npt = len(cfg["categories"]["sr"]["bins"]) - 1
+    ptbins = cfg["categories"]["sr"]["bins"]
     f = uproot.open(args.fitdiag_path)
-    channels = [f"ptbin{i}sr{reg}{args.year}" for i in range(npt) for reg in ("pass", "fail")]
-    for fit in ("prefit", "postfit"):
-        fitdir = FIT_DIRS[fit]
-        for ch in channels:
-            draw_channel(f, fitdir, ch, args.year, outdir / f"{ch}_{fit}.png", f"{fit}  |  {ch}")
+    fits = ("prefit", "postfit_sb" if args.sb_fit else "postfit")
+    for i in range(len(ptbins) - 1):
+        for reg in ("pass", "fail"):
+            ch = f"ptbin{i}sr{reg}{args.year}"
+            label = f"{reg.capitalize()}, {ptbins[i]:.0f} < $p_T$ < {ptbins[i + 1]:.0f} GeV"
+            for fit in fits:
+                # B-only postfit has zero signal: overlay the prefit signal instead
+                sig_dir = FIT_DIRS["prefit"] if fit == "postfit" else None
+                draw_channel(
+                    f, FIT_DIRS[fit], ch, args.year, outdir / f"{ch}_{fit}.png",
+                    f"{FIT_TITLES[fit]}\n{label}", prescale=args.prescale, sig_dir=sig_dir,
+                )
 
 
 def main():
@@ -276,6 +287,11 @@ def main():
                    help="drop the MC-TF row from the transfer-factor decomposition plot")
     p.add_argument("--which", nargs="+", default=["tf", "prefitpostfit"],
                    choices=["tf", "prefitpostfit"])
+    p.add_argument("--sb-fit", action="store_true",
+                   help="use the S+B fit (fit_s) for postfit shapes/residual instead of B-only (fit_b)")
+    p.add_argument("--prescale", type=int, default=10,
+                   help="data blinding prescale used in make_hists.py (divides the lumi label); "
+                   "default 10 matches make_hists.py, pass 1 for unblinded templates")
     args = p.parse_args()
 
     if args.indir is None:

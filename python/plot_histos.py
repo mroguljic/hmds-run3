@@ -66,6 +66,22 @@ from hbb.common_vars import LUMI
 
 hep.style.use("CMS")
 
+# Data blinding prescale used in make_histos.py (set from --prescale in __main__); divides
+# the lumi label, since data is 1/prescale and MC is scaled to match.
+DATA_PRESCALE = 10
+
+
+def lumi_fb(year_str):
+    """Luminosity label [fb^-1] for the plotted (possibly blinded) data."""
+    return sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years") / DATA_PRESCALE
+
+
+def save_fig(fig, output_name):
+    """Save as .png and .pdf."""
+    fig.savefig(output_name, dpi=300, bbox_inches="tight")
+    fig.savefig(Path(output_name).with_suffix(".pdf"), bbox_inches="tight")
+
+
 # --- Globals for Plotting Logic ---
 process_grouping = {
     "QCD": ["qcd"],
@@ -177,7 +193,7 @@ def plot_tagger_shapes(
             loc="best",
         )
 
-        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
+        luminosity = lumi_fb(year_str)
         hep.cms.label(
             "WiP",
             data=True,
@@ -192,7 +208,7 @@ def plot_tagger_shapes(
         output_name = (
             f"{outdir}/{year_str}_{region}_{category}_{output_tag}_ptbin{pt_low}_{pt_high}.png"
         )
-        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        save_fig(fig, output_name)
         plt.close(fig)
 
 
@@ -227,7 +243,7 @@ def plot_nsv_distributions(hists, category, year_str, outdir, region, style):
             logy=True,
         )
 
-        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
+        luminosity = lumi_fb(year_str)
         hep.cms.label(
             "WiP",
             data=True,
@@ -239,7 +255,7 @@ def plot_nsv_distributions(hists, category, year_str, outdir, region, style):
         )
 
         output_name = f"{outdir}/{year_str}_{region}_{category}_nsv_ptbin{pt_low}_{pt_high}.png"
-        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        save_fig(fig, output_name)
         plt.close(fig)
 
 
@@ -272,7 +288,7 @@ def plot_tqcd_distributions(hists, category, year_str, outdir, region, style):
             ylabel="Events / bin",
         )
 
-        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
+        luminosity = lumi_fb(year_str)
         hep.cms.label(
             "WiP",
             data=True,
@@ -284,7 +300,7 @@ def plot_tqcd_distributions(hists, category, year_str, outdir, region, style):
         )
 
         output_name = f"{outdir}/{year_str}_{region}_{category}_tqcd_ptbin{pt_low}_{pt_high}.png"
-        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        save_fig(fig, output_name)
         plt.close(fig)
 
 
@@ -353,7 +369,7 @@ def plot_parTqcd_vs_nsv(hists, category, year_str, outdir, region):
             output_name = (
                 f"{outdir}/{year_str}_{region}_{category}_{process}_parTQCD_vs_nSV_ptbin{pt_low}_{pt_high}.png"
             )
-            fig.savefig(output_name, dpi=300, bbox_inches="tight")
+            save_fig(fig, output_name)
             plt.close(fig)
 
 
@@ -392,7 +408,7 @@ def plot_by_process(hists, category, year_str, outdir, region, style):
             sort_by_yield=True,
             legend_title=legend_title,
         )
-        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all")
+        luminosity = lumi_fb(year_str)
         hep.cms.label(
             "WiP",
             data=True,
@@ -404,7 +420,7 @@ def plot_by_process(hists, category, year_str, outdir, region, style):
         )
 
         output_name = f"{outdir}/{year_str}_{region}_{category}_process_ptbin{pt_low}_{pt_high}.png"
-        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        save_fig(fig, output_name)
         plt.close(fig)
 
 
@@ -453,7 +469,7 @@ def plot_by_flavor(hists, category, year_str, outdir, region, style):
             legend_title=legend_title,
         )
 
-        luminosity = sum(LUMI[y] / 1000.0 for y in year_str.split("-") if y != "all-years")
+        luminosity = lumi_fb(year_str)
         hep.cms.label(
             "WiP",
             data=True,
@@ -466,7 +482,7 @@ def plot_by_flavor(hists, category, year_str, outdir, region, style):
         )
 
         output_name = f"{outdir}/{year_str}_{region}_{category}_flavor_ptbin{pt_low}_{pt_high}.png"
-        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        save_fig(fig, output_name)
         plt.close(fig)
 
 
@@ -554,7 +570,7 @@ def plot_qcd_shapes(hists, year_str, outdir, region, norm_type):
         )
 
         output_name = f"{outdir}/{year_str}_{region}_qcd_{norm_type}_ptbin{pt_low}_{pt_high}.png"
-        fig.savefig(output_name, dpi=300, bbox_inches="tight")
+        save_fig(fig, output_name)
         print(f"  Saved plot to {output_name}")
         plt.close(fig)
 
@@ -696,5 +712,13 @@ if __name__ == "__main__":
         nargs="+",
         default=None,
     )
+    parser.add_argument(
+        "--prescale",
+        help="Data blinding prescale used in make_histos.py (divides the lumi label). "
+        "Default 10 matches make_histos.py; pass 1 for unblinded histograms.",
+        type=int,
+        default=10,
+    )
     args = parser.parse_args()
+    DATA_PRESCALE = args.prescale
     main(args)
